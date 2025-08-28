@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	libRefreshToken "github.com/bcetienne/tools-go-token/lib/refresh-token"
+	"github.com/bcetienne/tools-go-token/lib"
 	modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
 type AccessTokenService struct {
-	config *libRefreshToken.Config
+	config *lib.Config
 }
 
 type AccessTokenServiceInterface interface {
@@ -20,7 +20,7 @@ type AccessTokenServiceInterface interface {
 	VerifyAccessToken(token string) (*modelRefreshToken.Claim, error)
 }
 
-func NewAccessTokenService(config *libRefreshToken.Config) *AccessTokenService {
+func NewAccessTokenService(config *lib.Config) *AccessTokenService {
 	return &AccessTokenService{
 		config: config,
 	}

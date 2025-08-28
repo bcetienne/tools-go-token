@@ -3,7 +3,7 @@ package service
 import (
 	"errors"
 
-	libRefreshToken "github.com/bcetienne/tools-go-token/lib/refresh-token"
+	"github.com/bcetienne/tools-go-token/lib"
 	modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
 
 	"log"
@@ -42,10 +42,11 @@ func Test_Auth_AccessToken_CreateAccessToken_TableDriven(t *testing.T) {
 		UserUUID: "123-123-123",
 		Email:    "user@mail.com",
 	}
-	config := libRefreshToken.Config{
-		Issuer:             "test_auth.com",
-		JWTSecret:          "rand0mString_",
-		RefreshTokenExpiry: "12h",
+	tokenExpiry := "12h"
+	config := lib.Config{
+		Issuer:      "test_auth.com",
+		JWTSecret:   "rand0mString_",
+		TokenExpiry: &tokenExpiry,
 	}
 
 	for _, tt := range tests {
@@ -88,11 +89,12 @@ func Test_Auth_AccessToken_VerifyAccessToken_TableDriven(t *testing.T) {
 		UserUUID: "456-456-456",
 		Email:    "miss@mail.com",
 	}
-	config := libRefreshToken.Config{
-		Issuer:             "test_auth.com",
-		JWTSecret:          "secureStr1ng_",
-		JWTExpiry:          "12h",
-		RefreshTokenExpiry: "3h",
+	tokenExpiry := "3h"
+	config := lib.Config{
+		Issuer:      "test_auth.com",
+		JWTSecret:   "secureStr1ng_",
+		JWTExpiry:   "12h",
+		TokenExpiry: &tokenExpiry,
 	}
 
 	for _, tt := range tests {
@@ -135,11 +137,12 @@ func Test_Auth_AccessToken_VerifyAccessToken_Expired(t *testing.T) {
 			UserUUID: "789-789-789",
 			Email:    "mister@mail.com",
 		}
-		config := libRefreshToken.Config{
-			Issuer:             "test_auth.com",
-			JWTSecret:          "pass0rdHidden_",
-			JWTExpiry:          "1s",
-			RefreshTokenExpiry: "6h",
+		tokenExpiry := "6h"
+		config := lib.Config{
+			Issuer:      "test_auth.com",
+			JWTSecret:   "pass0rdHidden_",
+			JWTExpiry:   "1s",
+			TokenExpiry: &tokenExpiry,
 		}
 		accessTokenService := service.NewAccessTokenService(&config)
 		token, err := accessTokenService.CreateAccessToken(&user)
@@ -176,11 +179,12 @@ func Test_Auth_AccessToken_VerifyAccessToken_TwoDifferentTokens(t *testing.T) {
 			UserUUID: "000-000-000",
 			Email:    "lady@mail.com",
 		}
-		config := libRefreshToken.Config{
-			Issuer:             "test_auth.com",
-			JWTSecret:          "super_Str0ngStr1ng_",
-			JWTExpiry:          "4h",
-			RefreshTokenExpiry: "2h",
+		tokenExpiry := "2h"
+		config := lib.Config{
+			Issuer:      "test_auth.com",
+			JWTSecret:   "super_Str0ngStr1ng_",
+			JWTExpiry:   "4h",
+			TokenExpiry: &tokenExpiry,
 		}
 		accessTokenService := service.NewAccessTokenService(&config)
 		token, err := accessTokenService.CreateAccessToken(&user)

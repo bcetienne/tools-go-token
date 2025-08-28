@@ -7,37 +7,33 @@ import (
 	"time"
 
 	"github.com/bcetienne/tools-go-token/lib"
-	//libRefreshToken "github.com/bcetienne/tools-go-token/lib/refresh-token"
 	"github.com/bcetienne/tools-go-token/model"
 	"github.com/bcetienne/tools-go-token/validation"
 )
 
 const (
-	refreshTokenMaxLength   int    = 255
-	refreshTokenServiceEnum string = "REFRESH_TOKEN"
-	refreshTokenSchema      string = "go_auth"
-	refreshTokenTable       string = "token"
+	passwordResetTokenMaxLength   int    = 32
+	passwordResetTokenServiceEnum string = "PASSWORD_RESET"
+	passwordResetTokenSchema      string = "go_auth"
+	passwordResetTokenTable       string = "token"
 )
 
-type RefreshTokenService struct {
+type PasswordResetService struct {
 	db           *sql.DB
 	config       *lib.Config
 	queryBuilder *lib.QueryBuilder
 }
 
-func NewRefreshTokenService(ctx context.Context, db *sql.DB, config *lib.Config) (*RefreshTokenService, error) {
+func NewPasswordResetService(ctx context.Context, db *sql.DB, config *lib.Config) (*PasswordResetService, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
-	}
-	if config.TokenExpiry == nil {
-		return nil, errors.New("token expiry is nil")
 	}
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	service := &RefreshTokenService{db, config, lib.NewQueryBuilder(refreshTokenSchema, refreshTokenTable, refreshTokenServiceEnum)}
+	service := &PasswordResetService{db, config, lib.NewQueryBuilder(passwordResetTokenSchema, passwordResetTokenTable, passwordResetTokenServiceEnum)}
 
 	// Prepare transaction
 	tx, err := db.BeginTx(ctx, nil)
@@ -82,7 +78,7 @@ func NewRefreshTokenService(ctx context.Context, db *sql.DB, config *lib.Config)
 	return service, nil
 }
 
-func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID int) (*model.Token, error) {
+func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, userID int) (*model.Token, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
 	}
@@ -92,28 +88,28 @@ func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID i
 	}
 
 	// Parse duration from configuration
-	duration, err := time.ParseDuration(*rts.config.TokenExpiry)
+	duration, err := time.ParseDuration(*prs.config.TokenExpiry)
 	if err != nil {
 		return nil, err
 	}
 	expiresAt := time.Now().Add(duration)
 
 	// Create a random token
-	token, err := lib.GenerateRandomString(refreshTokenMaxLength)
+	token, err := lib.GenerateRandomString(passwordResetTokenMaxLength)
 	if err != nil {
 		return nil, err
 	}
 
-	rt := model.NewToken(userID, token, refreshTokenServiceEnum, expiresAt)
+	rt := model.NewToken(userID, token, passwordResetTokenServiceEnum, expiresAt)
 
 	// Prepare transaction
-	tx, err := rts.db.BeginTx(ctx, nil)
+	tx, err := prs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	if err = tx.QueryRowContext(ctx, rts.queryBuilder.CreateToken(), rt.UserID, rt.TokenValue, rt.ExpiresAt).Scan(&rt.TokenID); err != nil {
+	if err = tx.QueryRowContext(ctx, prs.queryBuilder.CreateToken(), rt.UserID, rt.TokenValue, rt.ExpiresAt).Scan(&rt.TokenID); err != nil {
 		return nil, err
 	}
 
@@ -124,8 +120,8 @@ func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID i
 	return rt, nil
 }
 
-func (rts *RefreshTokenService) VerifyRefreshToken(ctx context.Context, token string) (*bool, error) {
-	if err := validation.IsIncomingTokenValid(token, refreshTokenMaxLength); err != nil {
+func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, token string) (*bool, error) {
+	if err := validation.IsIncomingTokenValid(token, passwordResetTokenMaxLength); err != nil {
 		return nil, err
 	}
 
@@ -134,22 +130,22 @@ func (rts *RefreshTokenService) VerifyRefreshToken(ctx context.Context, token st
 	}
 
 	// Prepare transaction
-	tx, err := rts.db.BeginTx(ctx, nil)
+	tx, err := prs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
 	var exists bool
-	if err = tx.QueryRowContext(ctx, rts.queryBuilder.VerifyToken(), token).Scan(&exists); err != nil {
+	if err = tx.QueryRowContext(ctx, prs.queryBuilder.VerifyToken(), token).Scan(&exists); err != nil {
 		return nil, err
 	}
 
 	return &exists, nil
 }
 
-func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token string, userID int) error {
-	if err := validation.IsIncomingTokenValid(token, refreshTokenMaxLength); err != nil {
+func (prs *PasswordResetService) RevokePasswordResetToken(ctx context.Context, token string, userID int) error {
+	if err := validation.IsIncomingTokenValid(token, passwordResetTokenMaxLength); err != nil {
 		return err
 	}
 
@@ -158,13 +154,13 @@ func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token st
 	}
 
 	// Prepare transaction
-	tx, err := rts.db.BeginTx(ctx, nil)
+	tx, err := prs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, rts.queryBuilder.RevokeToken(), userID, token)
+	result, err := tx.ExecContext(ctx, prs.queryBuilder.RevokeToken(), userID, token)
 	if err != nil {
 		return err
 	}
@@ -180,19 +176,19 @@ func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token st
 	return tx.Commit()
 }
 
-func (rts *RefreshTokenService) RevokeAllUserRefreshTokens(ctx context.Context, userID int) error {
+func (prs *PasswordResetService) RevokeAllUserPasswordResetTokens(ctx context.Context, userID int) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	// Prepare transaction
-	tx, err := rts.db.BeginTx(ctx, nil)
+	tx, err := prs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, rts.queryBuilder.RevokeAllUsersTokens(), userID)
+	result, err := tx.ExecContext(ctx, prs.queryBuilder.RevokeAllUsersTokens(), userID)
 	if err != nil {
 		return err
 	}
@@ -205,19 +201,19 @@ func (rts *RefreshTokenService) RevokeAllUserRefreshTokens(ctx context.Context, 
 	return tx.Commit()
 }
 
-func (rts *RefreshTokenService) DeleteExpiredRefreshTokens(ctx context.Context) error {
+func (prs *PasswordResetService) DeleteExpiredPasswordResetTokens(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	// Prepare transaction
-	tx, err := rts.db.BeginTx(ctx, nil)
+	tx, err := prs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, rts.queryBuilder.FlushExpiredTokens())
+	result, err := tx.ExecContext(ctx, prs.queryBuilder.FlushExpiredTokens())
 	if err != nil {
 		return err
 	}
@@ -230,19 +226,19 @@ func (rts *RefreshTokenService) DeleteExpiredRefreshTokens(ctx context.Context) 
 	return tx.Commit()
 }
 
-func (rts *RefreshTokenService) FlushRefreshTokens(ctx context.Context) error {
+func (prs *PasswordResetService) FlushPasswordResetTokens(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	// Prepare transaction
-	tx, err := rts.db.BeginTx(ctx, nil)
+	tx, err := prs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, rts.queryBuilder.FlushAllTokens())
+	result, err := tx.ExecContext(ctx, prs.queryBuilder.FlushAllTokens())
 	if err != nil {
 		return err
 	}
@@ -255,19 +251,19 @@ func (rts *RefreshTokenService) FlushRefreshTokens(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func (rts *RefreshTokenService) FlushUserRefreshTokens(ctx context.Context, userID int) error {
+func (prs *PasswordResetService) FlushUserPasswordResetTokens(ctx context.Context, userID int) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	// Prepare transaction
-	tx, err := rts.db.BeginTx(ctx, nil)
+	tx, err := prs.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, rts.queryBuilder.FlushUserTokens(), userID)
+	result, err := tx.ExecContext(ctx, prs.queryBuilder.FlushUserTokens(), userID)
 	if err != nil {
 		return err
 	}
