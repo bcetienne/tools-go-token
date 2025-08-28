@@ -2,83 +2,17 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"log"
-	"os"
+	"fmt"
 	"testing"
 	"time"
 
-	libRefreshToken "github.com/bcetienne/tools-go-token/lib/refresh-token"
+	"github.com/bcetienne/tools-go-token/lib"
 	"github.com/bcetienne/tools-go-token/service"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
-
-var (
-	db          *sql.DB
-	config      *libRefreshToken.Config
-	serviceEnum string = "REFRESH_TOKEN"
-	schema      string = "go_auth"
-	table       string = "refresh_token"
-)
-
-func TestMain(m *testing.M) {
-	ctx := context.Background()
-
-	database := "go_auth_module_test"
-	username := "user"
-	password := "password"
-
-	postgresContainer, err := postgres.Run(ctx,
-		"postgres:17-alpine",
-		postgres.WithDatabase(database),
-		postgres.WithUsername(username),
-		postgres.WithPassword(password),
-		postgres.BasicWaitStrategies(),
-	)
-
-	defer func() {
-		if err = testcontainers.TerminateContainer(postgresContainer); err != nil {
-			log.Printf("failed to terminate container: %s", err)
-		}
-	}()
-	if err != nil {
-		log.Printf("failed to start container: %s", err)
-		return
-	}
-
-	connStr, err := postgresContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		log.Printf("failed to get connection string: %s", err)
-		return
-	}
-
-	// Connect to database
-	db, err = sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatalf("Cannot to connect to database: %s", err)
-	}
-	defer db.Close()
-
-	// Check that the connection is established
-	err = db.Ping()
-	if err != nil {
-		log.Fatalf("Cannot ping database: %s", err)
-	}
-
-	// Initialize fake config
-	config = &libRefreshToken.Config{RefreshTokenExpiry: "24h"}
-
-	// Run tests
-	exitCode := m.Run()
-
-	// Exit with the tests exit code
-	os.Exit(exitCode)
-}
 
 func setupService(t *testing.T) *service.RefreshTokenService {
 	// NewRefreshTokenService will create the schema and table on the first call.
@@ -99,14 +33,13 @@ func TestNewRefreshTokenService(t *testing.T) {
 
 		// Verify that the schema and table exist
 		var exists bool
-		query := `
-		SELECT EXISTS (
+		query := fmt.Sprintf(`SELECT EXISTS (
 			SELECT FROM information_schema.tables
-			WHERE table_schema = 'go_auth' AND table_name = 'refresh_token'
-		)`
+			WHERE table_schema = '%s' AND table_name = '%s'
+		)`, schema, table)
 		err = db.QueryRow(query).Scan(&exists)
 		require.NoError(t, err)
-		assert.True(t, exists, "The table 'refresh_token' should exist in the 'go_auth' schema")
+		assert.True(t, exists, fmt.Sprintf("The table '%s' should exist in the '%s' schema", table, schema))
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
@@ -345,8 +278,9 @@ func TestDeleteExpiredRefreshTokens(t *testing.T) {
 	rts := setupService(t)
 
 	t.Run("Should delete expired tokens", func(t *testing.T) {
-		// Créer une config avec expiration très courte
-		shortConfig := &libRefreshToken.Config{RefreshTokenExpiry: "1ms"}
+		// Create config with short duration
+		tokenExpiry := "1ms"
+		shortConfig := &lib.Config{TokenExpiry: &tokenExpiry}
 		shortRts, err := service.NewRefreshTokenService(context.Background(), db, shortConfig)
 		require.NoError(t, err)
 
@@ -460,7 +394,7 @@ func TestFlushUserRefreshTokens(t *testing.T) {
 
 	t.Run("Should handle user with no tokens", func(t *testing.T) {
 		err := rts.FlushUserRefreshTokens(context.Background(), 999)
-		require.NoError(t, err) // Ne devrait pas échouer même si l'utilisateur n'a pas de tokens
+		require.NoError(t, err) // Should not fail even if the user has no tokens
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
@@ -471,7 +405,8 @@ func TestFlushUserRefreshTokens(t *testing.T) {
 
 func TestInvalidConfig(t *testing.T) {
 	t.Run("Should fail with invalid duration format", func(t *testing.T) {
-		invalidConfig := &libRefreshToken.Config{RefreshTokenExpiry: "invalid-duration"}
+		tokenExpiry := "invalid-duration"
+		invalidConfig := &lib.Config{TokenExpiry: &tokenExpiry}
 		rts, err := service.NewRefreshTokenService(context.Background(), db, invalidConfig)
 		require.NoError(t, err) // Le service se crée bien
 
