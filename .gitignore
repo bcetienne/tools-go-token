@@ -238,4 +238,7 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# AIs
+CLAUDE.md
+
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,linux,go,visualstudiocode,jetbrains+all,sublimetext
