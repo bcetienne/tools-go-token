@@ -1,36 +1,42 @@
 # Go Token Authentication Module
 
-A comprehensive Go module providing secure authentication and token management functionality with PostgreSQL persistence, JWT tokens, and robust validation.
+A comprehensive Go module providing secure authentication and token management functionality with Redis persistence, JWT tokens, and robust validation.
 
 ## 🚀 Features
 
-### Core Authentication Components
-- **JWT Access Tokens**: Short-lived tokens for API authentication
-- **Refresh Tokens**: Long-lived tokens stored in database for session management
-- **Password Reset Tokens**: Secure tokens for password recovery workflows
+### Core authentication components
+- **JWT access tokens**: Short-lived tokens for API authentication (stateless)
+- **Refresh tokens**: Long-lived tokens stored in Redis for session management (multi-device support)
+- **Password reset tokens**: Secure tokens for password recovery workflows (single active token per user)
 
-### Security & Validation
-- **Password Security**: Bcrypt hashing with configurable cost factor (14)
-- **Password Validation**: Comprehensive rules (uppercase, lowercase, digits, special chars, length, blacklist)
-- **Email Validation**: RFC-compliant email format validation
-- **Token Validation**: Length and format validation for incoming tokens
+### Security & validation
+- **Password security**: Bcrypt hashing with configurable cost factor (14)
+- **Password validation**: Comprehensive rules (uppercase, lowercase, digits, special chars, length, blacklist)
+- **Email validation**: RFC-compliant email format validation
+- **Token validation**: Length and format validation for incoming tokens
 
-### Database Management
-- **PostgreSQL Integration**: Full schema and table management
-- **Migration Support**: Automatic schema, enum, and table creation
-- **Transaction Safety**: All database operations wrapped in transactions
-- **Query Builder**: Type-safe SQL query generation
+### Redis integration
+- **Automatic expiration**: Built-in TTL (time-to-live) for token management with service-specific durations
+- **High performance**: In-memory storage for fast token operations
+- **Multi-token support**: Users can be logged in on multiple devices (RefreshToken - default 1h)
+- **Single-token enforcement**: Only one password reset link active per user (PasswordReset - default 10m)
+- **No manual cleanup**: Redis automatically removes expired tokens
+- **Flexible TTL**: Different expiration times for refresh tokens (long-lived) and password reset tokens (short-lived)
 
-## 📋 Table of Contents
+## 📋 Table of contents
 
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Usage Examples](#usage-examples)
-- [API Reference](#api-reference)
-- [Architecture](#architecture)
-- [Testing](#testing)
-- [Contributing](#contributing)
+- [Installation](#-installation)
+- [Quick start](#-quick-start)
+- [Configuration](#-configuration)
+- [Usage examples](#-usage-examples)
+- [Architecture](#-architecture)
+- [Testing](#-testing)
+- [Performance considerations](#-performance-considerations)
+- [Security features](#-security-features)
+- [Production deployment](#-production-deployment)
+- [Development setup](#-development-setup)
+- [License](#-license)
+- [Related projects](#-related-projects)
 
 ## 🛠️ Installation
 
@@ -41,61 +47,73 @@ go get github.com/bcetienne/tools-go-token
 ### Dependencies
 
 - Go 1.25+
-- PostgreSQL 12+
+- Redis 6.0+
 
 ### Required Go modules:
 ```go
 require (
     github.com/golang-jwt/jwt/v5 v5.3.0
     github.com/google/uuid v1.6.0
+    github.com/redis/go-redis/v9 v9.7.0
     golang.org/x/crypto v0.41.0
 )
 ```
 
-## ⚡ Quick Start
+## ⚡ Quick start
 
-### 1. Basic Setup
+### 1. Basic setup
 
 ```go
 package main
 
 import (
     "context"
-    "database/sql"
     "log"
 
     "github.com/bcetienne/tools-go-token/lib"
     "github.com/bcetienne/tools-go-token/service"
     "github.com/bcetienne/tools-go-token/validation"
-    _ "github.com/lib/pq"
+    "github.com/redis/go-redis/v9"
 )
 
 func main() {
-    // Database connection
-    db, err := sql.Open("postgres", "postgres://user:pass@localhost/dbname?sslmode=disable")
-    if err != nil {
-        log.Fatal(err)
+    // Redis connection
+    redisClient := redis.NewClient(&redis.Options{
+        Addr:     "localhost:6379",
+        Password: "", // no password set
+        DB:       0,  // use default DB
+    })
+    defer redisClient.Close()
+
+    // Test Redis connection
+    ctx := context.Background()
+    if err := redisClient.Ping(ctx).Err(); err != nil {
+        log.Fatal("Cannot connect to Redis:", err)
     }
-    defer db.Close()
 
     // Configuration
-    tokenExpiry := "24h"
+    refreshTokenTTL := "7d"      // Long-lived refresh tokens
+    passwordResetTTL := "15m"    // Short-lived reset tokens
     config := lib.NewConfig(
         "your-app.com",           // Issuer
         "your-jwt-secret-key",    // JWT Secret
         "15m",                    // JWT Expiry
-        &tokenExpiry,             // Token Expiry
+        "localhost:6379",         // Redis Address
+        "",                       // Redis Password
+        0,                        // Redis DB
+        &refreshTokenTTL,         // Refresh Token TTL
+        &passwordResetTTL,        // Password Reset TTL
     )
 
     // Initialize services
-    ctx := context.Background()
-    refreshTokenService, err := service.NewRefreshTokenService(ctx, db, config)
+    refreshTokenService, err := service.NewRefreshTokenService(ctx, redisClient, config)
     if err != nil {
         log.Fatal(err)
     }
 
     accessTokenService := service.NewAccessTokenService(config)
-    passwordResetService, err := service.NewPasswordResetService(ctx, db, config)
+
+    passwordResetService, err := service.NewPasswordResetService(ctx, redisClient, config)
     if err != nil {
         log.Fatal(err)
     }
@@ -104,18 +122,18 @@ func main() {
 }
 ```
 
-### 2. Password Validation
+### 2. Password validation
 
 ```go
 import "github.com/bcetienne/tools-go-token/validation"
 
 func validateUserPassword() {
     validator := validation.NewPasswordValidation()
-    
+
     // Configure custom rules
     validator.SetMinLength(12)
     validator.SetUnauthorizedWords([]string{"password", "123456", "admin"})
-    
+
     // Validate password
     password := "MySecure123!"
     if validator.IsPasswordStrengthEnough(password) {
@@ -126,7 +144,7 @@ func validateUserPassword() {
 }
 ```
 
-### 3. Complete Authentication Flow
+### 3. Complete authentication flow
 
 ```go
 import (
@@ -137,76 +155,98 @@ import (
 func authenticationFlow() {
     // User data
     user := modelRefreshToken.NewAuthUser(1, "user-uuid", "user@example.com")
-    
+
     // Hash password
     passwordHash := lib.NewPasswordHash()
     hashedPassword, _ := passwordHash.Hash("userPassword123!")
-    
-    // Create refresh token
+
+    // Create refresh token (returns *string)
     refreshToken, _ := refreshTokenService.CreateRefreshToken(ctx, user.GetUserID())
-    
+
     // Create access token
     accessToken, _ := accessTokenService.CreateAccessToken(user)
-    
-    log.Printf("Refresh Token: %s", refreshToken.TokenValue)
+
+    log.Printf("Refresh Token: %s", *refreshToken)
     log.Printf("Access Token: %s", accessToken)
 }
 ```
 
 ## ⚙️ Configuration
 
-### Config Structure
+### Config structure
 
 ```go
 type Config struct {
-    Issuer      string  // JWT issuer (e.g., "your-app.com")
-    JWTSecret   string  // Secret key for JWT signing
-    JWTExpiry   string  // JWT expiration duration (e.g., "15m")
-    TokenExpiry *string // Database token expiration (e.g., "24h")
+    Issuer           string  // JWT issuer (e.g., "your-app.com")
+    JWTSecret        string  // Secret key for JWT signing
+    JWTExpiry        string  // JWT expiration duration (e.g., "15m")
+    RedisAddr        string  // Redis server address (e.g., "localhost:6379")
+    RedisPwd         string  // Redis password (empty if no auth)
+    RedisDB          int     // Redis database number (0-15)
+    RefreshTokenTTL  *string // Refresh token expiration (e.g., "7d", default: "1h")
+    PasswordResetTTL *string // Password reset token expiration (e.g., "15m", default: "10m")
 }
 ```
 
-### Environment Variables (Recommended)
+**Why separate TTLs?**
+- **Refresh tokens** are session tokens used for long-term authentication across multiple devices. They need longer expiration times (hours to days).
+- **Password reset tokens** are security-sensitive and should expire quickly (minutes) to minimize the window for potential attacks.
+
+### Environment variables (recommended)
 
 ```bash
 # .env file
 JWT_ISSUER=your-app.com
 JWT_SECRET=your-very-secure-secret-key-here
 JWT_EXPIRY=15m
-TOKEN_EXPIRY=24h
+REFRESH_TOKEN_TTL=7d
+PASSWORD_RESET_TTL=15m
+REDIS_ADDR=localhost:6379
+REDIS_PASSWORD=
+REDIS_DB=0
 ```
 
 ```go
 // Loading from environment
-import "os"
+import (
+    "os"
+    "strconv"
+)
 
 func loadConfig() *lib.Config {
-    tokenExpiry := os.Getenv("TOKEN_EXPIRY")
+    redisDB, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
+    refreshTokenTTL := os.Getenv("REFRESH_TOKEN_TTL")
+    passwordResetTTL := os.Getenv("PASSWORD_RESET_TTL")
+
     return lib.NewConfig(
         os.Getenv("JWT_ISSUER"),
         os.Getenv("JWT_SECRET"),
         os.Getenv("JWT_EXPIRY"),
-        &tokenExpiry,
+        os.Getenv("REDIS_ADDR"),
+        os.Getenv("REDIS_PASSWORD"),
+        redisDB,
+        &refreshTokenTTL,      // nil uses default "1h"
+        &passwordResetTTL,     // nil uses default "10m"
     )
 }
 ```
 
-## 📚 Usage Examples
+## 📚 Usage examples
 
-### Email Validation
+### Email validation
 
 ```go
 import "github.com/bcetienne/tools-go-token/validation"
 
 func validateEmail() {
     emailValidator := validation.NewEmailValidation()
-    
+
     emails := []string{
         "valid@example.com",
         "invalid.email",
         "user+tag@domain.co.uk",
     }
-    
+
     for _, email := range emails {
         if emailValidator.IsValidEmail(email) {
             log.Printf("✅ %s is valid", email)
@@ -217,81 +257,88 @@ func validateEmail() {
 }
 ```
 
-### Password Hashing & Verification
+### Password hashing & verification
 
 ```go
 import "github.com/bcetienne/tools-go-token/lib"
 
 func passwordExample() {
     hasher := lib.NewPasswordHash()
-    
+
     password := "userPassword123!"
-    
+
     // Hash password
     hash, err := hasher.Hash(password)
     if err != nil {
         log.Fatal(err)
     }
-    
+
     // Verify password
     isValid := hasher.CheckHash(password, hash)
     log.Printf("Password verification: %v", isValid)
-    
+
     // Wrong password
     isValid = hasher.CheckHash("wrongPassword", hash)
     log.Printf("Wrong password verification: %v", isValid) // false
 }
 ```
 
-### Refresh Token Management
+### Refresh token management (multi-device support)
 
 ```go
 func refreshTokenExample() {
     ctx := context.Background()
     userID := 123
-    
-    // Create refresh token
+
+    // Create refresh token (user can have multiple active tokens)
     token, err := refreshTokenService.CreateRefreshToken(ctx, userID)
     if err != nil {
         log.Fatal(err)
     }
-    log.Printf("Created token: %s", token.TokenValue)
-    
+    log.Printf("Created token: %s", *token)
+
     // Verify token
-    exists, err := refreshTokenService.VerifyRefreshToken(ctx, token.TokenValue)
+    valid, err := refreshTokenService.VerifyRefreshToken(ctx, userID, *token)
     if err != nil {
         log.Fatal(err)
     }
-    log.Printf("Token valid: %v", *exists)
-    
-    // Revoke token
-    err = refreshTokenService.RevokeRefreshToken(ctx, token.TokenValue, userID)
+    log.Printf("Token valid: %v", valid)
+
+    // Revoke specific token (e.g., logout from one device)
+    err = refreshTokenService.RevokeRefreshToken(ctx, *token, userID)
     if err != nil {
         log.Fatal(err)
     }
     log.Println("Token revoked successfully")
-    
-    // Cleanup expired tokens
-    err = refreshTokenService.DeleteExpiredRefreshTokens(ctx)
+
+    // Revoke all user tokens (e.g., user changes password)
+    err = refreshTokenService.RevokeAllUserRefreshTokens(ctx, userID)
     if err != nil {
         log.Fatal(err)
     }
-    log.Println("Expired tokens cleaned up")
+    log.Println("All user tokens revoked")
+
+    // Emergency: revoke ALL tokens (e.g., security breach)
+    err = refreshTokenService.RevokeAllRefreshTokens(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Println("All tokens revoked")
 }
 ```
 
-### JWT Access Token Handling
+### JWT access token handling
 
 ```go
 func accessTokenExample() {
     user := modelRefreshToken.NewAuthUser(1, "uuid", "user@example.com")
-    
+
     // Create access token
     token, err := accessTokenService.CreateAccessToken(user)
     if err != nil {
         log.Fatal(err)
     }
-    
+
     // Verify access token
     claims, err := accessTokenService.VerifyAccessToken(token)
     if err != nil {
@@ -303,124 +350,141 @@ func accessTokenExample() {
         }
         return
     }
-    
+
     log.Printf("Token valid for user: %d", claims.UserID)
 }
 ```
 
-### Password Reset Flow
+### Password reset flow (single active token)
 
 ```go
 func passwordResetExample() {
     ctx := context.Background()
     userID := 456
-    
-    // Create password reset token
+
+    // Create password reset token (invalidates previous token automatically)
     resetToken, err := passwordResetService.CreatePasswordResetToken(ctx, userID)
     if err != nil {
         log.Fatal(err)
     }
-    
+
     // Send token via email (implementation depends on your email service)
-    sendPasswordResetEmail(user.Email, resetToken.TokenValue)
-    
+    sendPasswordResetEmail(user.Email, *resetToken)
+
     // Later, when user submits reset form...
     // Verify the token
-    valid, err := passwordResetService.VerifyPasswordResetToken(ctx, resetToken.TokenValue)
+    valid, err := passwordResetService.VerifyPasswordResetToken(ctx, userID, *resetToken)
     if err != nil {
         log.Fatal(err)
     }
-    
-    if *valid {
+
+    if valid {
         // Token is valid, allow password reset
         log.Println("Password reset token verified")
         // Update user password in your user service
-        // Then revoke the token
-        passwordResetService.RevokePasswordResetToken(ctx, resetToken.TokenValue, userID)
+        // Then revoke the token (requires correct token for security)
+        passwordResetService.RevokePasswordResetToken(ctx, userID, *resetToken)
     }
 }
 ```
 
 ## 🏗️ Architecture
 
-### Project Structure
+### Project structure
 
 ```
 .
 ├── lib/                    # Core utilities
-│   ├── config.go          # Configuration management
-│   ├── misc.go            # Random string generation
-│   ├── passwordHash.go    # Password hashing (bcrypt)
-│   └── queryBuilder.go    # SQL query builder
-├── validation/            # Validation logic
-│   ├── email.go          # Email validation
-│   ├── password.go       # Password validation
-│   └── token.go          # Token validation
-├── model/                # Data models
-│   ├── token.go          # Base token model
-│   └── refresh-token/    # Refresh token specific models
-│       ├── authUser.go   # User authentication model
-│       └── claim.go      # JWT claims model
-├── service/              # Business logic
-│   ├── accessToken.go    # JWT access token service
-│   ├── refreshToken.go   # Refresh token service
-│   └── passwordReset.go  # Password reset service
-└── test/                 # Comprehensive tests
+│   ├── config.go           # Configuration management
+│   ├── misc.go             # Random string generation
+│   ├── passwordHash.go     # Password hashing (bcrypt)
+│   └── redisClient.go      # Redis client utilities
+├── validation/             # Validation logic
+│   ├── email.go            # Email validation
+│   ├── password.go         # Password validation
+│   └── token.go            # Token validation
+├── model/                  # Data models
+│   └── refresh-token/      # Refresh token specific models
+│       ├── authUser.go     # User authentication model
+│       └── claim.go        # JWT claims model
+├── service/                # Business logic
+│   ├── accessToken.go      # JWT access token service (stateless)
+│   ├── refreshToken.go     # Refresh token service (Redis)
+│   └── passwordReset.go    # Password reset service (Redis)
+└── test/                   # Comprehensive tests
 ```
 
-### Design Patterns Used
+### Design patterns used
 
-- **Interface Segregation**: Each service defines its own interface
-- **Dependency Injection**: Services accept interfaces, not concrete types
-- **Repository Pattern**: Database operations abstracted through services
-- **Builder Pattern**: Query builder for SQL generation
-- **Factory Pattern**: Constructor functions for all components
+- **Interface segregation**: Each service defines its own interface
+- **Dependency injection**: Services accept interfaces, not concrete types
+- **Repository pattern**: Token storage abstracted through services
+- **Factory pattern**: Constructor functions for all components
+- **Strategy pattern**: Different token storage strategies (multi vs single)
 
-### Database Schema
+### Redis key patterns
 
-The module automatically creates the following PostgreSQL structure:
+The module uses different Redis key patterns for different token types:
 
-```sql
--- Schema
-CREATE SCHEMA IF NOT EXISTS go_auth;
-
--- Enum for token types
-CREATE TYPE go_auth.token_type AS ENUM (
-    'REFRESH_TOKEN',
-    'PASSWORD_RESET'
-);
-
--- Tokens table
-CREATE TABLE IF NOT EXISTS go_auth.token (
-    token_id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL,
-    token_type go_auth.token_type NOT NULL,
-    token_value VARCHAR NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    revoked_at TIMESTAMPTZ,
-    UNIQUE(token_value, token_type)
-);
-
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_token_user_id ON go_auth.token(user_id);
-CREATE INDEX IF NOT EXISTS idx_token_token_value ON go_auth.token(token_value);
-CREATE INDEX IF NOT EXISTS idx_token_expires_at ON go_auth.token(expires_at);
+#### RefreshToken (multi-device support)
 ```
+Pattern: refresh:{userID}:{token}
+Value: "1"
+TTL: RefreshTokenTTL (default: 1h, recommended: 7d for production)
+
+Example:
+  refresh:123:abc...xyz → "1" (expires in 7d)
+  refresh:123:def...uvw → "1" (expires in 7d)
+  refresh:456:ghi...rst → "1" (expires in 7d)
+
+Allows multiple active tokens per user for multi-device sessions.
+Long TTL enables persistent sessions without frequent re-authentication.
+```
+
+#### PasswordReset (single active token)
+```
+Pattern: password_reset:{userID}
+Value: {token}
+TTL: PasswordResetTTL (default: 10m, recommended: 15m-30m)
+
+Example:
+  password_reset:123 → "abc123xyz..." (expires in 15m)
+  password_reset:456 → "def456uvw..." (expires in 30m)
+
+Only one active reset link per user. Creating new token invalidates previous one.
+Short TTL minimizes security risk if reset email is compromised.
+```
+
+### Token lifecycle
+
+**RefreshToken** (multi-token per user):
+1. **Create**: `CreateRefreshToken(ctx, userID)` → Returns `*string`
+2. **Verify**: `VerifyRefreshToken(ctx, userID, token)` → Checks if key exists
+3. **Revoke**: `RevokeRefreshToken(ctx, token, userID)` → Deletes specific token
+4. **RevokeAllUser**: Deletes all tokens for one user (password change)
+5. **RevokeAll**: Emergency revocation of ALL tokens (security breach)
+6. **Expiration**: Automatic via Redis TTL
+
+**PasswordReset** (single token per user):
+1. **Create**: `CreatePasswordResetToken(ctx, userID)` → Returns `*string`, invalidates previous
+2. **Verify**: `VerifyPasswordResetToken(ctx, userID, token)` → Retrieves and compares token
+3. **Revoke**: `RevokePasswordResetToken(ctx, userID, token)` → Verifies token before deletion (security)
+4. **RevokeAll**: Emergency revocation of ALL reset tokens
+5. **Expiration**: Automatic via Redis TTL
 
 ## 🧪 Testing
 
 The project includes comprehensive tests using:
 
-- **Unit Tests**: All components have individual unit tests
-- **Integration Tests**: Database operations tested with TestContainers
-- **Table-Driven Tests**: Multiple test cases per function
-- **Mock Testing**: Interface-based testing for better isolation
+- **Unit tests**: All components have individual unit tests
+- **Integration tests**: Redis operations tested with TestContainers
+- **Table-Driven tests**: Multiple test cases per function
+- **Concurrent testing**: Multi-threaded operation validation
 
-### Running Tests
+### Running tests
 
 ```bash
-# Run all tests
+# Run all tests (requires Docker for TestContainers)
 go test ./...
 
 # Run tests with coverage
@@ -433,106 +497,186 @@ go test ./lib
 
 # Run with verbose output
 go test -v ./...
+
+# Run specific test
+go test -v -run TestCreateRefreshToken ./test/service
 ```
 
-### Test Examples
+### Test coverage
 
-The project includes extensive test coverage:
+The project includes 76 comprehensive tests:
 
-- Password validation with various scenarios
-- Email validation with edge cases
-- Token generation and verification
-- Database operations with transactions
-- Concurrent operations testing
-- Error handling validation
+- **AccessToken**: 4 tests (JWT creation, verification, expiration)
+- **RefreshToken**: 32 tests (multi-token support, revocation, expiration)
+- **PasswordReset**: 40 tests (single-token enforcement, security, concurrency)
+- **Validation**: Password strength, email format, token validation
+- **Utilities**: Password hashing, random string generation
 
-## 📊 Performance Considerations
+## 📊 Performance considerations
 
-### Password Hashing
+### Password hashing
 - Uses bcrypt with cost factor 14 (recommended for 2024+)
 - Hashing takes ~200-300ms per operation (intentional for security)
 
-### Database Operations
-- All operations use transactions for data consistency
-- Prepared statements prevent SQL injection
-- Indexes on commonly queried columns
-- Connection pooling recommended for production
+### Redis operations
+- All operations are in-memory (sub-millisecond response times)
+- Connection pooling built into go-redis client
+- Automatic reconnection on connection loss
+- Pipeline support for batch operations
 
-### Token Security
+### Token security
 - Refresh tokens: 255 characters, cryptographically secure
 - Password reset tokens: 32 characters, short-lived
 - JWT tokens: HS256 signing, configurable expiration
 
-## 🔒 Security Features
+## 🔒 Security features
 
-### Password Security
+### Password security
 - Minimum 8 characters (configurable)
 - Must contain: uppercase, lowercase, digits, special characters
 - Customizable blacklist for common passwords
 - Bcrypt hashing with high cost factor
 
-### Token Security
-- Cryptographically secure random generation
-- Database-stored tokens with expiration
-- Revocation capabilities
-- Automatic cleanup of expired tokens
+### Token security
+- Cryptographically secure random generation (`crypto/rand`)
+- Redis-stored tokens with automatic expiration (TTL)
+- Revocation capabilities (individual, user-specific, global)
+- Single active reset token per user (prevents multiple concurrent reset attempts)
+- PasswordReset revocation requires correct token (prevents unauthorized revocation)
 
-### Database Security
-- SQL injection prevention through prepared statements
-- Transaction isolation
-- Unique constraints on critical fields
+### Redis security
+- Connection authentication support
+- TLS/SSL support for encrypted connections
+- No sensitive data stored (tokens are random strings)
 
-## 🚀 Production Deployment
+## 🚀 Production deployment
 
-### Environment Configuration
+### Environment configuration
 
 ```bash
 # Production environment variables
 export JWT_ISSUER="your-production-domain.com"
 export JWT_SECRET="$(openssl rand -base64 32)"  # Generate secure secret
 export JWT_EXPIRY="15m"
-export TOKEN_EXPIRY="7d"
-export DB_HOST="your-db-host"
-export DB_PORT="5432"
-export DB_NAME="your_production_db"
-export DB_USER="your_db_user"
-export DB_PASSWORD="your_secure_db_password"
+
+# Token TTL configuration
+export REFRESH_TOKEN_TTL="7d"    # Long-lived session tokens
+export PASSWORD_RESET_TTL="15m"  # Short-lived security tokens
+
+# Redis configuration
+export REDIS_ADDR="your-redis-host:6379"
+export REDIS_PASSWORD="your-secure-redis-password"
+export REDIS_DB="0"
+export REDIS_TLS_ENABLED="true"  # Use TLS in production
 ```
 
-### Database Setup
+### Redis setup
 
-```sql
--- Create dedicated user for the application
-CREATE USER token_app WITH PASSWORD 'secure_password';
+```bash
+# Install Redis (Ubuntu/Debian)
+sudo apt update
+sudo apt install redis-server
 
--- Create database
-CREATE DATABASE your_app_db OWNER token_app;
+# Configure Redis for production
+sudo nano /etc/redis/redis.conf
 
--- Grant necessary permissions
-GRANT CONNECT ON DATABASE your_app_db TO token_app;
-GRANT CREATE ON SCHEMA public TO token_app;
+# Key settings:
+# - requirepass your_strong_password
+# - maxmemory 256mb
+# - maxmemory-policy allkeys-lru
+# - protected-mode yes
+# - bind 127.0.0.1 ::1
+
+# Restart Redis
+sudo systemctl restart redis-server
+
+# Verify Redis is running
+redis-cli ping
 ```
 
-### Monitoring & Maintenance
+### Production checklist
+
+- [ ] Use strong JWT secret (32+ random bytes)
+- [ ] Enable Redis authentication (`requirepass`)
+- [ ] Use TLS for Redis connections in production
+- [ ] Set appropriate token expiry times:
+  - [ ] RefreshTokenTTL: 7d-30d (balance security vs user experience)
+  - [ ] PasswordResetTTL: 15m-30m (minimize security window)
+  - [ ] JWTExpiry: 15m-1h (short-lived access tokens)
+- [ ] Configure Redis `maxmemory` policy
+- [ ] Monitor Redis memory usage
+- [ ] Set up Redis persistence (RDB or AOF) if needed
+- [ ] Implement rate limiting on token creation endpoints
+- [ ] Log token operations for security auditing
+
+### Docker deployment
+
+```dockerfile
+# Dockerfile
+FROM golang:1.25-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o main .
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+COPY --from=builder /app/main .
+CMD ["./main"]
+```
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  app:
+    build: .
+    environment:
+      - JWT_ISSUER=${JWT_ISSUER}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRY=15m
+      - REFRESH_TOKEN_TTL=7d
+      - PASSWORD_RESET_TTL=15m
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=0
+    depends_on:
+      - redis
+
+volumes:
+  redis-data:
+```
+
+### Monitoring
 
 ```go
-// Cleanup job (run periodically)
-func cleanupExpiredTokens(services *Services) {
-    ctx := context.Background()
-    
-    // Clean refresh tokens
-    if err := services.RefreshToken.DeleteExpiredRefreshTokens(ctx); err != nil {
-        log.Printf("Error cleaning refresh tokens: %v", err)
-    }
-    
-    // Clean password reset tokens
-    if err := services.PasswordReset.DeleteExpiredPasswordResetTokens(ctx); err != nil {
-        log.Printf("Error cleaning password reset tokens: %v", err)
-    }
+// Health check endpoint
+func healthCheck(redisClient *redis.Client) error {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    return redisClient.Ping(ctx).Err()
 }
+
+// Metrics to monitor
+// - Token creation rate
+// - Token verification rate
+// - Token revocation rate
+// - Redis memory usage
+// - Redis connection errors
 ```
 
-### Development Setup
+## 📝 Development setup
 
 ```bash
 # Clone the repository
@@ -541,6 +685,9 @@ cd tools-go-token
 
 # Install dependencies
 go mod tidy
+
+# Start Redis for local development
+docker run -d -p 6379:6379 redis:7-alpine
 
 # Run tests
 go test ./...
@@ -556,9 +703,10 @@ golangci-lint run
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🔗 Related Projects
+## 🔗 Related projects
 
 - [golang-jwt/jwt](https://github.com/golang-jwt/jwt) - JWT implementation for Go
+- [redis/go-redis](https://github.com/redis/go-redis) - Redis client for Go
 - [golang.org/x/crypto](https://golang.org/x/crypto) - Extended cryptography packages
 - [TestContainers](https://testcontainers.org/) - Integration testing with real dependencies
 
