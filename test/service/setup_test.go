@@ -2,70 +2,72 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"os"
 	"testing"
 
 	"github.com/bcetienne/tools-go-token/lib"
+	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	redisTC "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
 var (
-	db     *sql.DB
+	// Redis client for all token services
+	redisDB *redis.Client
+
+	// Shared config
 	config *lib.Config
-	schema = "go_auth"
-	table  = "token"
 )
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	database := "go_auth_module_test"
-	username := "user"
-	password := "password"
-
-	postgresContainer, err := postgres.Run(ctx,
-		"postgres:17-alpine",
-		postgres.WithDatabase(database),
-		postgres.WithUsername(username),
-		postgres.WithPassword(password),
-		postgres.BasicWaitStrategies(),
+	// Start Redis container
+	redisContainer, err := redisTC.Run(ctx,
+		"redis:7-alpine",
+		redisTC.WithSnapshotting(10, 1),
+		redisTC.WithLogLevel(redisTC.LogLevelVerbose),
 	)
+	if err != nil {
+		log.Printf("failed to start Redis container: %s", err)
+		return
+	}
 
 	defer func() {
-		if err = testcontainers.TerminateContainer(postgresContainer); err != nil {
-			log.Printf("failed to terminate container: %s", err)
+		if err = testcontainers.TerminateContainer(redisContainer); err != nil {
+			log.Printf("failed to terminate Redis container: %s", err)
 		}
 	}()
+
+	redisConnStr, err := redisContainer.ConnectionString(ctx)
 	if err != nil {
-		log.Printf("failed to start container: %s", err)
+		log.Printf("failed to get Redis connection string: %s", err)
 		return
 	}
 
-	connStr, err := postgresContainer.ConnectionString(ctx, "sslmode=disable")
+	// Connect to Redis
+	opts, err := redis.ParseURL(redisConnStr)
 	if err != nil {
-		log.Printf("failed to get connection string: %s", err)
-		return
+		log.Fatalf("Cannot parse Redis URL: %s", err)
 	}
 
-	// Connect to database
-	db, err = sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatalf("Cannot to connect to database: %s", err)
-	}
-	defer db.Close()
+	redisDB = redis.NewClient(opts)
+	defer redisDB.Close()
 
-	// Check that the connection is established
-	err = db.Ping()
+	// Check Redis connection
+	err = redisDB.Ping(ctx).Err()
 	if err != nil {
-		log.Fatalf("Cannot ping database: %s", err)
+		log.Fatalf("Cannot ping Redis: %s", err)
 	}
 
-	// Initialize fake config
-	tokenExpiry := "24h"
-	config = &lib.Config{TokenExpiry: &tokenExpiry}
+	// Initialize shared config
+	refreshTokenTTL := "24h"
+	passwordResetTTL := "24h"
+	config = &lib.Config{
+		RefreshTokenTTL:  &refreshTokenTTL,
+		PasswordResetTTL: &passwordResetTTL,
+	}
 
 	// Run tests
 	exitCode := m.Run()

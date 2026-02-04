@@ -2,54 +2,49 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/bcetienne/tools-go-token/lib"
 	"github.com/bcetienne/tools-go-token/service"
 
-	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func setupService(t *testing.T) *service.RefreshTokenService {
-	// NewRefreshTokenService will create the schema and table on the first call.
-	rts, err := service.NewRefreshTokenService(t.Context(), db, config)
+	rts, err := service.NewRefreshTokenService(t.Context(), redisDB, config)
 	require.NoError(t, err)
 
-	// We clear the table to ensure the test starts from a clean state.
-	err = rts.FlushRefreshTokens(t.Context())
+	// Clear all tokens to ensure clean state
+	err = rts.RevokeAllRefreshTokens(t.Context())
 	require.NoError(t, err)
 
 	return rts
 }
 
 func TestNewRefreshTokenService(t *testing.T) {
-	t.Run("Should create schema and table if not exists", func(t *testing.T) {
-		_, err := service.NewRefreshTokenService(t.Context(), db, config)
+	t.Run("Should create service successfully", func(t *testing.T) {
+		_, err := service.NewRefreshTokenService(t.Context(), redisDB, config)
 		require.NoError(t, err)
-
-		// Verify that the schema and table exist
-		var exists bool
-		query := fmt.Sprintf(`SELECT EXISTS (
-			SELECT FROM information_schema.tables
-			WHERE table_schema = '%s' AND table_name = '%s'
-		)`, schema, table)
-		err = db.QueryRow(query).Scan(&exists)
-		require.NoError(t, err)
-		assert.True(t, exists, fmt.Sprintf("The table '%s' should exist in the '%s' schema", table, schema))
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		_, err := service.NewRefreshTokenService(nil, db, config)
+		_, err := service.NewRefreshTokenService(nil, redisDB, config)
 		require.NoError(t, err)
 	})
 
 	t.Run("Should fail with nil database", func(t *testing.T) {
 		_, err := service.NewRefreshTokenService(context.Background(), nil, config)
 		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db is nil")
+	})
+
+	t.Run("Should fail with nil refresh token ttl", func(t *testing.T) {
+		invalidConfig := &lib.Config{RefreshTokenTTL: nil}
+		_, err := service.NewRefreshTokenService(context.Background(), redisDB, invalidConfig)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refresh token ttl is nil")
 	})
 }
 
@@ -62,11 +57,8 @@ func TestCreateRefreshToken(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.NotNil(t, token)
-		assert.Equal(t, userID, token.UserID)
-		assert.NotEmpty(t, token.TokenValue)
-		assert.Equal(t, "REFRESH_TOKEN", token.TokenType)
-		assert.True(t, token.ExpiresAt.After(time.Now()))
-		assert.Greater(t, token.TokenID, 0)
+		assert.NotEmpty(t, *token)
+		assert.Equal(t, 255, len(*token))
 	})
 
 	t.Run("Should fail with invalid user ID", func(t *testing.T) {
@@ -83,6 +75,7 @@ func TestCreateRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(nil, 123)
 		require.NoError(t, err)
 		assert.NotNil(t, token)
+		assert.NotEmpty(t, *token)
 	})
 
 	t.Run("Should create different tokens for same user", func(t *testing.T) {
@@ -93,8 +86,7 @@ func TestCreateRefreshToken(t *testing.T) {
 		token2, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		assert.NotEqual(t, token1.TokenValue, token2.TokenValue)
-		assert.NotEqual(t, token1.TokenID, token2.TokenID)
+		assert.NotEqual(t, *token1, *token2)
 	})
 }
 
@@ -106,32 +98,41 @@ func TestVerifyRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		exists, err := rts.VerifyRefreshToken(context.Background(), token.TokenValue)
+		valid, err := rts.VerifyRefreshToken(context.Background(), userID, *token)
 		require.NoError(t, err)
-		assert.NotNil(t, exists)
-		assert.True(t, *exists)
+		assert.True(t, valid)
 	})
 
 	t.Run("Should return false for non-existent token", func(t *testing.T) {
-		exists, err := rts.VerifyRefreshToken(context.Background(), "non-existent-token")
+		userID := 123
+		valid, err := rts.VerifyRefreshToken(context.Background(), userID, "non-existent-token-with-correct-length-padding-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 		require.NoError(t, err)
-		assert.NotNil(t, exists)
-		assert.False(t, *exists)
+		assert.False(t, valid)
+	})
+
+	t.Run("Should fail with invalid user ID", func(t *testing.T) {
+		_, err := rts.VerifyRefreshToken(context.Background(), 0, "some-token")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid user id")
+
+		_, err = rts.VerifyRefreshToken(context.Background(), -1, "some-token")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should fail with empty token", func(t *testing.T) {
-		_, err := rts.VerifyRefreshToken(context.Background(), "")
+		_, err := rts.VerifyRefreshToken(context.Background(), 123, "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty token")
 	})
 
 	t.Run("Should fail with token too long", func(t *testing.T) {
-		longToken := string(make([]byte, 256)) // Plus long que tokenMaxLength (255)
+		longToken := string(make([]byte, 256))
 		for i := range longToken {
 			longToken = longToken[:i] + "a" + longToken[i+1:]
 		}
 
-		_, err := rts.VerifyRefreshToken(context.Background(), longToken)
+		_, err := rts.VerifyRefreshToken(context.Background(), 123, longToken)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "token too long")
 	})
@@ -141,9 +142,9 @@ func TestVerifyRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		exists, err := rts.VerifyRefreshToken(nil, token.TokenValue)
+		valid, err := rts.VerifyRefreshToken(nil, userID, *token)
 		require.NoError(t, err)
-		assert.True(t, *exists)
+		assert.True(t, valid)
 	})
 
 	t.Run("Should return false for revoked token", func(t *testing.T) {
@@ -151,14 +152,43 @@ func TestVerifyRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		// Révoquer le token
-		err = rts.RevokeRefreshToken(context.Background(), token.TokenValue, userID)
+		err = rts.RevokeRefreshToken(context.Background(), *token, userID)
 		require.NoError(t, err)
 
-		// Vérifier qu'il n'est plus valide
-		exists, err := rts.VerifyRefreshToken(context.Background(), token.TokenValue)
+		valid, err := rts.VerifyRefreshToken(context.Background(), userID, *token)
 		require.NoError(t, err)
-		assert.False(t, *exists)
+		assert.False(t, valid)
+	})
+
+	t.Run("Should return false for wrong user ID", func(t *testing.T) {
+		userID := 123
+		token, err := rts.CreateRefreshToken(context.Background(), userID)
+		require.NoError(t, err)
+
+		// Try to verify with different user ID
+		valid, err := rts.VerifyRefreshToken(context.Background(), 456, *token)
+		require.NoError(t, err)
+		assert.False(t, valid)
+	})
+
+	t.Run("Should return false for expired token", func(t *testing.T) {
+		// Create config with very short duration
+		refreshTokenTTL := "100ms"
+		shortConfig := &lib.Config{RefreshTokenTTL: &refreshTokenTTL}
+		shortRts, err := service.NewRefreshTokenService(context.Background(), redisDB, shortConfig)
+		require.NoError(t, err)
+
+		userID := 789
+		token, err := shortRts.CreateRefreshToken(context.Background(), userID)
+		require.NoError(t, err)
+
+		// Wait for token to expire
+		time.Sleep(150 * time.Millisecond)
+
+		// Verify token is expired (Redis TTL handles this automatically)
+		valid, err := shortRts.VerifyRefreshToken(context.Background(), userID, *token)
+		require.NoError(t, err)
+		assert.False(t, valid)
 	})
 }
 
@@ -170,13 +200,22 @@ func TestRevokeRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		err = rts.RevokeRefreshToken(context.Background(), token.TokenValue, userID)
+		err = rts.RevokeRefreshToken(context.Background(), *token, userID)
 		require.NoError(t, err)
 
-		// Vérifier que le token n'est plus valide
-		exists, err := rts.VerifyRefreshToken(context.Background(), token.TokenValue)
+		valid, err := rts.VerifyRefreshToken(context.Background(), userID, *token)
 		require.NoError(t, err)
-		assert.False(t, *exists)
+		assert.False(t, valid)
+	})
+
+	t.Run("Should fail with invalid user ID", func(t *testing.T) {
+		err := rts.RevokeRefreshToken(context.Background(), "some-token", 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid user id")
+
+		err = rts.RevokeRefreshToken(context.Background(), "some-token", -1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should fail with empty token", func(t *testing.T) {
@@ -196,25 +235,23 @@ func TestRevokeRefreshToken(t *testing.T) {
 		assert.Contains(t, err.Error(), "token too long")
 	})
 
-	t.Run("Should fail with non-existent token", func(t *testing.T) {
-		err := rts.RevokeRefreshToken(context.Background(), "non-existent-token", 123)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "token not found or already revoked")
+	t.Run("Should not fail with non-existent token", func(t *testing.T) {
+		// Redis DEL is idempotent, no error if key doesn't exist
+		err := rts.RevokeRefreshToken(context.Background(), "non-existent-token-with-correct-length-padding-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 123)
+		require.NoError(t, err)
 	})
 
-	t.Run("Should fail when revoking already revoked token", func(t *testing.T) {
+	t.Run("Should not fail when revoking already revoked token", func(t *testing.T) {
 		userID := 123
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		// Première révocation
-		err = rts.RevokeRefreshToken(context.Background(), token.TokenValue, userID)
+		err = rts.RevokeRefreshToken(context.Background(), *token, userID)
 		require.NoError(t, err)
 
-		// Deuxième révocation (devrait échouer)
-		err = rts.RevokeRefreshToken(context.Background(), token.TokenValue, userID)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "token not found or already revoked")
+		// Second revocation should not fail (idempotent)
+		err = rts.RevokeRefreshToken(context.Background(), *token, userID)
+		require.NoError(t, err)
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
@@ -222,7 +259,7 @@ func TestRevokeRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		err = rts.RevokeRefreshToken(nil, token.TokenValue, userID)
+		err = rts.RevokeRefreshToken(nil, *token, userID)
 		require.NoError(t, err)
 	})
 }
@@ -233,39 +270,48 @@ func TestRevokeAllUserRefreshTokens(t *testing.T) {
 	t.Run("Should revoke all user tokens", func(t *testing.T) {
 		userID := 123
 
-		// Créer plusieurs tokens pour le même utilisateur
 		token1, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 		token2, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		// Créer un token pour un autre utilisateur
+		// Create token for another user
 		otherUserID := 456
 		otherToken, err := rts.CreateRefreshToken(context.Background(), otherUserID)
 		require.NoError(t, err)
 
-		// Révoquer tous les tokens de l'utilisateur 123
+		// Revoke all tokens for user 123
 		err = rts.RevokeAllUserRefreshTokens(context.Background(), userID)
 		require.NoError(t, err)
 
-		// Vérifier que les tokens de l'utilisateur 123 sont révoqués
-		exists1, err := rts.VerifyRefreshToken(context.Background(), token1.TokenValue)
+		// Verify tokens for user 123 are revoked
+		valid1, err := rts.VerifyRefreshToken(context.Background(), userID, *token1)
 		require.NoError(t, err)
-		assert.False(t, *exists1)
+		assert.False(t, valid1)
 
-		exists2, err := rts.VerifyRefreshToken(context.Background(), token2.TokenValue)
+		valid2, err := rts.VerifyRefreshToken(context.Background(), userID, *token2)
 		require.NoError(t, err)
-		assert.False(t, *exists2)
+		assert.False(t, valid2)
 
-		// Vérifier que le token de l'autre utilisateur est toujours valide
-		existsOther, err := rts.VerifyRefreshToken(context.Background(), otherToken.TokenValue)
+		// Verify other user's token is still valid
+		validOther, err := rts.VerifyRefreshToken(context.Background(), otherUserID, *otherToken)
 		require.NoError(t, err)
-		assert.True(t, *existsOther)
+		assert.True(t, validOther)
+	})
+
+	t.Run("Should fail with invalid user ID", func(t *testing.T) {
+		err := rts.RevokeAllUserRefreshTokens(context.Background(), 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid user id")
+
+		err = rts.RevokeAllUserRefreshTokens(context.Background(), -1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should handle user with no tokens", func(t *testing.T) {
 		err := rts.RevokeAllUserRefreshTokens(context.Background(), 999)
-		require.NoError(t, err) // Ne devrait pas échouer même si l'utilisateur n'a pas de tokens
+		require.NoError(t, err)
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
@@ -274,143 +320,50 @@ func TestRevokeAllUserRefreshTokens(t *testing.T) {
 	})
 }
 
-func TestDeleteExpiredRefreshTokens(t *testing.T) {
+func TestRevokeAllRefreshTokens(t *testing.T) {
 	rts := setupService(t)
 
-	t.Run("Should delete expired tokens", func(t *testing.T) {
-		// Create config with short duration
-		tokenExpiry := "1ms"
-		shortConfig := &lib.Config{TokenExpiry: &tokenExpiry}
-		shortRts, err := service.NewRefreshTokenService(context.Background(), db, shortConfig)
-		require.NoError(t, err)
-
-		userID := 123
-		token, err := shortRts.CreateRefreshToken(context.Background(), userID)
-		require.NoError(t, err)
-
-		// Attendre que le token expire
-		time.Sleep(10 * time.Millisecond)
-
-		// Supprimer les tokens expirés
-		err = shortRts.DeleteExpiredRefreshTokens(context.Background())
-		require.NoError(t, err)
-
-		// Vérifier que le token a été supprimé (et non juste marqué comme expiré)
-		exists, err := shortRts.VerifyRefreshToken(context.Background(), token.TokenValue)
-		require.NoError(t, err)
-		assert.False(t, *exists)
-	})
-
-	t.Run("Should not delete valid tokens", func(t *testing.T) {
-		userID := 123
-		token, err := rts.CreateRefreshToken(context.Background(), userID)
-		require.NoError(t, err)
-
-		err = rts.DeleteExpiredRefreshTokens(context.Background())
-		require.NoError(t, err)
-
-		// Le token valide devrait toujours exister
-		exists, err := rts.VerifyRefreshToken(context.Background(), token.TokenValue)
-		require.NoError(t, err)
-		assert.True(t, *exists)
-	})
-
-	t.Run("Should handle nil context", func(t *testing.T) {
-		err := rts.DeleteExpiredRefreshTokens(nil)
-		require.NoError(t, err)
-	})
-}
-
-func TestFlushRefreshTokens(t *testing.T) {
-	rts := setupService(t)
-
-	t.Run("Should delete all tokens", func(t *testing.T) {
-		// Créer plusieurs tokens
+	t.Run("Should revoke all tokens for all users", func(t *testing.T) {
 		userID1 := 123
 		userID2 := 456
+
 		token1, err := rts.CreateRefreshToken(context.Background(), userID1)
 		require.NoError(t, err)
 		token2, err := rts.CreateRefreshToken(context.Background(), userID2)
 		require.NoError(t, err)
 
-		// Supprimer tous les tokens
-		err = rts.FlushRefreshTokens(context.Background())
+		// Revoke all tokens
+		err = rts.RevokeAllRefreshTokens(context.Background())
 		require.NoError(t, err)
 
-		// Vérifier que tous les tokens ont été supprimés
-		exists1, err := rts.VerifyRefreshToken(context.Background(), token1.TokenValue)
+		// Verify all tokens are revoked
+		valid1, err := rts.VerifyRefreshToken(context.Background(), userID1, *token1)
 		require.NoError(t, err)
-		assert.False(t, *exists1)
+		assert.False(t, valid1)
 
-		exists2, err := rts.VerifyRefreshToken(context.Background(), token2.TokenValue)
+		valid2, err := rts.VerifyRefreshToken(context.Background(), userID2, *token2)
 		require.NoError(t, err)
-		assert.False(t, *exists2)
+		assert.False(t, valid2)
 	})
 
-	t.Run("Should handle empty table", func(t *testing.T) {
-		err := rts.FlushRefreshTokens(context.Background())
-		require.NoError(t, err) // Ne devrait pas échouer sur une table vide
-	})
-
-	t.Run("Should handle nil context", func(t *testing.T) {
-		err := rts.FlushRefreshTokens(nil)
+	t.Run("Should handle when no tokens exist", func(t *testing.T) {
+		err := rts.RevokeAllRefreshTokens(context.Background())
 		require.NoError(t, err)
-	})
-}
-
-func TestFlushUserRefreshTokens(t *testing.T) {
-	rts := setupService(t)
-
-	t.Run("Should delete all tokens for specific user", func(t *testing.T) {
-		userID1 := 123
-		userID2 := 456
-
-		// Créer des tokens pour les deux utilisateurs
-		token1, err := rts.CreateRefreshToken(context.Background(), userID1)
-		require.NoError(t, err)
-		token2, err := rts.CreateRefreshToken(context.Background(), userID1)
-		require.NoError(t, err)
-		otherToken, err := rts.CreateRefreshToken(context.Background(), userID2)
-		require.NoError(t, err)
-
-		// Supprimer tous les tokens de l'utilisateur 1
-		err = rts.FlushUserRefreshTokens(context.Background(), userID1)
-		require.NoError(t, err)
-
-		// Vérifier que les tokens de l'utilisateur 1 ont été supprimés
-		exists1, err := rts.VerifyRefreshToken(context.Background(), token1.TokenValue)
-		require.NoError(t, err)
-		assert.False(t, *exists1)
-
-		exists2, err := rts.VerifyRefreshToken(context.Background(), token2.TokenValue)
-		require.NoError(t, err)
-		assert.False(t, *exists2)
-
-		// Vérifier que le token de l'utilisateur 2 existe toujours
-		existsOther, err := rts.VerifyRefreshToken(context.Background(), otherToken.TokenValue)
-		require.NoError(t, err)
-		assert.True(t, *existsOther)
-	})
-
-	t.Run("Should handle user with no tokens", func(t *testing.T) {
-		err := rts.FlushUserRefreshTokens(context.Background(), 999)
-		require.NoError(t, err) // Should not fail even if the user has no tokens
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		err := rts.FlushUserRefreshTokens(nil, 123)
+		err := rts.RevokeAllRefreshTokens(nil)
 		require.NoError(t, err)
 	})
 }
 
 func TestInvalidConfig(t *testing.T) {
 	t.Run("Should fail with invalid duration format", func(t *testing.T) {
-		tokenExpiry := "invalid-duration"
-		invalidConfig := &lib.Config{TokenExpiry: &tokenExpiry}
-		rts, err := service.NewRefreshTokenService(context.Background(), db, invalidConfig)
-		require.NoError(t, err) // Le service se crée bien
+		refreshTokenTTL := "invalid-duration"
+		invalidConfig := &lib.Config{RefreshTokenTTL: &refreshTokenTTL}
+		rts, err := service.NewRefreshTokenService(context.Background(), redisDB, invalidConfig)
+		require.NoError(t, err)
 
-		// Mais la création de token échoue
 		_, err = rts.CreateRefreshToken(context.Background(), 123)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "time: invalid duration")

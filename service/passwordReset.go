@@ -2,83 +2,43 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/bcetienne/tools-go-token/lib"
-	"github.com/bcetienne/tools-go-token/model"
 	"github.com/bcetienne/tools-go-token/validation"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
-	passwordResetTokenMaxLength   int    = 32
-	passwordResetTokenServiceEnum string = "PASSWORD_RESET"
-	passwordResetTokenSchema      string = "go_auth"
-	passwordResetTokenTable       string = "token"
+	passwordResetTokenMaxLength int    = 32
+	redisStoreNamePasswordReset string = "password_reset"
 )
 
 type PasswordResetService struct {
-	db           *sql.DB
-	config       *lib.Config
-	queryBuilder *lib.QueryBuilder
+	db     *redis.Client
+	config *lib.Config
 }
 
-func NewPasswordResetService(ctx context.Context, db *sql.DB, config *lib.Config) (*PasswordResetService, error) {
+func NewPasswordResetService(ctx context.Context, db *redis.Client, config *lib.Config) (*PasswordResetService, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
+	}
+	if config.PasswordResetTTL == nil {
+		return nil, errors.New("password reset ttl is nil") // Should no go further
 	}
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	service := &PasswordResetService{db, config, lib.NewQueryBuilder(passwordResetTokenSchema, passwordResetTokenTable, passwordResetTokenServiceEnum)}
-
-	// Prepare transaction
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	// Create schema if not exists
-	_, err = tx.ExecContext(ctx, service.queryBuilder.CreateSchemaIfNotExists())
-	if err != nil {
-		return nil, err
-	}
-
-	// Create enum if not exists
-	_, err = tx.ExecContext(ctx, service.queryBuilder.CreateEnumIfNotExists())
-	if err != nil {
-		return nil, err
-	}
-
-	var enumValueExists bool
-	if err = tx.QueryRowContext(ctx, service.queryBuilder.EnumValueExists()).Scan(&enumValueExists); err != nil {
-		return nil, err
-	}
-	if !enumValueExists {
-		_, err = tx.ExecContext(ctx, service.queryBuilder.AddEnum())
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Create table if not exists
-	_, err = tx.ExecContext(ctx, service.queryBuilder.CreateTableIfNotExists())
-	if err != nil {
-		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
+	service := &PasswordResetService{db, config}
 
 	return service, nil
 }
 
-func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, userID int) (*model.Token, error) {
+func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, userID int) (*string, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
 	}
@@ -88,11 +48,10 @@ func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, u
 	}
 
 	// Parse duration from configuration
-	duration, err := time.ParseDuration(*prs.config.TokenExpiry)
+	duration, err := time.ParseDuration(*prs.config.PasswordResetTTL)
 	if err != nil {
 		return nil, err
 	}
-	expiresAt := time.Now().Add(duration)
 
 	// Create a random token
 	token, err := lib.GenerateRandomString(passwordResetTokenMaxLength)
@@ -100,51 +59,42 @@ func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, u
 		return nil, err
 	}
 
-	rt := model.NewToken(userID, token, passwordResetTokenServiceEnum, expiresAt)
-
-	// Prepare transaction
-	tx, err := prs.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	if err = tx.QueryRowContext(ctx, prs.queryBuilder.CreateToken(), rt.UserID, rt.TokenValue, rt.ExpiresAt).Scan(&rt.TokenID); err != nil {
+	// Add the token to Redis
+	if err := prs.db.Set(ctx, fmt.Sprintf("%s:%d", redisStoreNamePasswordReset, userID), token, duration).Err(); err != nil {
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	return rt, nil
+	return &token, nil
 }
 
-func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, token string) (*bool, error) {
+func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, userID int, token string) (bool, error) {
+	if userID <= 0 {
+		return false, errors.New("invalid user id")
+	}
+
 	if err := validation.IsIncomingTokenValid(token, passwordResetTokenMaxLength); err != nil {
-		return nil, err
+		return false, err
 	}
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	// Prepare transaction
-	tx, err := prs.db.BeginTx(ctx, nil)
+	val, err := prs.db.Get(ctx, fmt.Sprintf("%s:%d", redisStoreNamePasswordReset, userID)).Result()
+	if errors.Is(err, redis.Nil) {
+		return false, nil // Token doesn't exist or expired - not an error
+	}
 	if err != nil {
-		return nil, err
+		return false, err // Real Redis error
 	}
-	defer tx.Rollback()
-
-	var exists bool
-	if err = tx.QueryRowContext(ctx, prs.queryBuilder.VerifyToken(), token).Scan(&exists); err != nil {
-		return nil, err
-	}
-
-	return &exists, nil
+	return val == token, nil
 }
 
-func (prs *PasswordResetService) RevokePasswordResetToken(ctx context.Context, token string, userID int) error {
+func (prs *PasswordResetService) RevokePasswordResetToken(ctx context.Context, userID int, token string) error {
+	if userID <= 0 {
+		return errors.New("invalid user id")
+	}
+
 	if err := validation.IsIncomingTokenValid(token, passwordResetTokenMaxLength); err != nil {
 		return err
 	}
@@ -153,125 +103,37 @@ func (prs *PasswordResetService) RevokePasswordResetToken(ctx context.Context, t
 		ctx = context.Background()
 	}
 
-	// Prepare transaction
-	tx, err := prs.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	result, err := tx.ExecContext(ctx, prs.queryBuilder.RevokeToken(), userID, token)
-	if err != nil {
-		return err
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rowsAffected == 0 {
+	// Get the stored token to verify it matches before revoking
+	key := fmt.Sprintf("%s:%d", redisStoreNamePasswordReset, userID)
+	storedToken, err := prs.db.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
 		return errors.New("token not found or already revoked")
 	}
+	if err != nil {
+		return err
+	}
 
-	return tx.Commit()
+	// Verify the token matches
+	if storedToken != token {
+		return errors.New("token mismatch")
+	}
+
+	// Delete the token
+	return prs.db.Del(ctx, key).Err()
 }
 
-func (prs *PasswordResetService) RevokeAllUserPasswordResetTokens(ctx context.Context, userID int) error {
+func (prs *PasswordResetService) RevokeAllPasswordResetTokens(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	// Prepare transaction
-	tx, err := prs.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	result, err := tx.ExecContext(ctx, prs.queryBuilder.RevokeAllUsersTokens(), userID)
-	if err != nil {
-		return err
+	keys := prs.db.Scan(ctx, 0, fmt.Sprintf("%s:*", redisStoreNamePasswordReset), 0).Iterator()
+	for keys.Next(ctx) {
+		key := keys.Val()
+		if err := prs.db.Del(ctx, key).Err(); err != nil {
+			return fmt.Errorf("failed to delete key %s : %w", key, err)
+		}
 	}
 
-	_, err = result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}
-
-func (prs *PasswordResetService) DeleteExpiredPasswordResetTokens(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	// Prepare transaction
-	tx, err := prs.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	result, err := tx.ExecContext(ctx, prs.queryBuilder.FlushExpiredTokens())
-	if err != nil {
-		return err
-	}
-
-	_, err = result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}
-
-func (prs *PasswordResetService) FlushPasswordResetTokens(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	// Prepare transaction
-	tx, err := prs.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	result, err := tx.ExecContext(ctx, prs.queryBuilder.FlushAllTokens())
-	if err != nil {
-		return err
-	}
-
-	_, err = result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}
-
-func (prs *PasswordResetService) FlushUserPasswordResetTokens(ctx context.Context, userID int) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	// Prepare transaction
-	tx, err := prs.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	result, err := tx.ExecContext(ctx, prs.queryBuilder.FlushUserTokens(), userID)
-	if err != nil {
-		return err
-	}
-
-	_, err = result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
+	return keys.Err()
 }
