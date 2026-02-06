@@ -13,7 +13,10 @@ import (
 )
 
 func setupOTPService(t *testing.T) *service.OTPService {
-	os, err := service.NewOTPService(t.Context(), redisDB, config)
+	// Use low-cost bcrypt (4) for fast testing instead of production cost (14)
+	// This reduces test time from ~18s per hash to ~10ms per hash
+	hasher := lib.NewPasswordHashWithCost(4)
+	os, err := service.NewOTPServiceWithHasher(t.Context(), redisDB, config, hasher)
 	require.NoError(t, err)
 
 	// Clear all OTPs to ensure clean state
@@ -241,7 +244,8 @@ func TestVerifyOTP(t *testing.T) {
 		// Create config with very short duration
 		otpTTL := "100ms"
 		shortConfig := &lib.Config{OTPTTL: &otpTTL}
-		shortOS, err := service.NewOTPService(context.Background(), redisDB, shortConfig)
+		hasher := lib.NewPasswordHashWithCost(4)
+		shortOS, err := service.NewOTPServiceWithHasher(context.Background(), redisDB, shortConfig, hasher)
 		require.NoError(t, err)
 
 		userID := 789
@@ -605,7 +609,8 @@ func TestOTPExpiration(t *testing.T) {
 		// Create config with very short duration
 		otpTTL := "200ms"
 		shortConfig := &lib.Config{OTPTTL: &otpTTL}
-		shortOS, err := service.NewOTPService(context.Background(), redisDB, shortConfig)
+		hasher := lib.NewPasswordHashWithCost(4)
+		shortOS, err := service.NewOTPServiceWithHasher(context.Background(), redisDB, shortConfig, hasher)
 		require.NoError(t, err)
 
 		userID := 777

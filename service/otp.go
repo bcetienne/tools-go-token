@@ -47,7 +47,8 @@ type OTPServiceInterface interface {
 	RevokeAllOTPs(ctx context.Context) error
 }
 
-// NewOTPService creates a new OTP service instance with Redis persistence.
+// NewOTPService creates a new OTP service instance with Redis persistence
+// using the default bcrypt hasher (cost factor 14).
 // Returns an error if the database client is nil or if OTPTTL is not configured.
 //
 // The service is initialized with:
@@ -70,6 +71,28 @@ type OTPServiceInterface interface {
 //	    log.Fatal(err)
 //	}
 func NewOTPService(ctx context.Context, db *redis.Client, config *lib.Config) (*OTPService, error) {
+	return NewOTPServiceWithHasher(ctx, db, config, nil)
+}
+
+// NewOTPServiceWithHasher creates a new OTP service instance with a custom hasher.
+// This is primarily useful for testing with a lower bcrypt cost factor to speed up tests.
+// If hasher is nil, uses the default hasher with cost factor 14.
+//
+// Parameters:
+//   - ctx: Context for initialization (uses Background if nil)
+//   - db: Redis client for OTP storage
+//   - config: Configuration containing OTPTTL
+//   - hasher: Custom password hasher (nil for default)
+//
+// Returns:
+//   - *OTPService: Initialized service ready for use
+//   - error: Configuration or database validation errors
+//
+// Example for testing:
+//
+//	hasher := lib.NewPasswordHashWithCost(4) // Fast for tests
+//	otpService, err := service.NewOTPServiceWithHasher(ctx, redisClient, config, hasher)
+func NewOTPServiceWithHasher(ctx context.Context, db *redis.Client, config *lib.Config, hasher lib.PasswordHashInterface) (*OTPService, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
@@ -87,10 +110,15 @@ func NewOTPService(ctx context.Context, db *redis.Client, config *lib.Config) (*
 		return nil, fmt.Errorf("invalid OTP TTL format: %w", err)
 	}
 
+	// Use default hasher if none provided
+	if hasher == nil {
+		hasher = lib.NewPasswordHash()
+	}
+
 	service := &OTPService{
 		db:       db,
 		config:   config,
-		hasher:   lib.NewPasswordHash(),
+		hasher:   hasher,
 		duration: duration,
 	}
 
