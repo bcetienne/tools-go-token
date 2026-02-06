@@ -2,6 +2,7 @@ package lib
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math/big"
 )
 
@@ -43,4 +44,13 @@ func GenerateRandomString(n int) (string, error) {
 	}
 
 	return string(ret), nil
+}
+
+// GenerateOTP creates a random 6 digits code (One Time Password) from 000000 to 999999
+func GenerateOTP() (string, error) {
+	otp, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", otp.Int64()), nil
 }

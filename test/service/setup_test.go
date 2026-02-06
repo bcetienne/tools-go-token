@@ -64,9 +64,11 @@ func TestMain(m *testing.M) {
 	// Initialize shared config
 	refreshTokenTTL := "24h"
 	passwordResetTTL := "24h"
+	otpTTL := "24h"
 	config = &lib.Config{
 		RefreshTokenTTL:  &refreshTokenTTL,
 		PasswordResetTTL: &passwordResetTTL,
+		OTPTTL:           &otpTTL,
 	}
 
 	// Run tests
