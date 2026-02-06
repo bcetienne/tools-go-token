@@ -25,7 +25,6 @@ linters:
     - govet         # Vet examines Go source code
     - ineffassign   # Detect ineffectual assignments
     - staticcheck   # Static analysis
-    - typecheck     # Type-check code
     - unused        # Check for unused constants, variables, functions
     - gofmt         # Check if code is formatted
     - goimports     # Check imports formatting
