@@ -72,10 +72,6 @@ func NewPasswordResetService(ctx context.Context, db *redis.Client, config *lib.
 		return nil, errors.New("password reset ttl is nil") // Should no go further
 	}
 
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	service := &PasswordResetService{db, config}
 
 	return service, nil

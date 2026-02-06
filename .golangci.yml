@@ -1,7 +1,7 @@
 # golangci-lint configuration
 # https://golangci-lint.run/usage/configuration/
 
-version: 2
+version: "2"
 
 run:
   # Timeout for analysis
@@ -43,6 +43,8 @@ linters-settings:
     rules:
       - name: exported
         disabled: true  # Disable requirement for comments on exported items (can add later if needed)
+      - name: var-naming
+        disabled: true  # Allow underscores in package names
 
   gosec:
     # Exclude some checks that might be too strict for this project

@@ -53,7 +53,11 @@ func TestMain(m *testing.M) {
 	}
 
 	redisDB = redis.NewClient(opts)
-	defer redisDB.Close()
+	defer func() {
+		if err := redisDB.Close(); err != nil {
+			log.Printf("failed to close Redis client: %s", err)
+		}
+	}()
 
 	// Check Redis connection
 	err = redisDB.Ping(ctx).Err()

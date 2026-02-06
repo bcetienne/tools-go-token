@@ -74,10 +74,6 @@ func NewRefreshTokenService(ctx context.Context, db *redis.Client, config *lib.C
 		return nil, errors.New("refresh token ttl is nil") // Should no go further
 	}
 
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	service := &RefreshTokenService{db, config}
 
 	return service, nil

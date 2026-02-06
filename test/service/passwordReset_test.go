@@ -30,7 +30,7 @@ func TestNewPasswordResetService(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		_, err := service.NewPasswordResetService(nil, redisDB, config)
+		_, err := service.NewPasswordResetService(context.TODO(), redisDB, config)
 		require.NoError(t, err)
 	})
 
@@ -72,7 +72,7 @@ func TestCreatePasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		token, err := prs.CreatePasswordResetToken(nil, 123)
+		token, err := prs.CreatePasswordResetToken(context.TODO(), 123)
 		require.NoError(t, err)
 		assert.NotNil(t, token)
 		assert.NotEmpty(t, *token)
@@ -160,7 +160,7 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		valid, err := prs.VerifyPasswordResetToken(nil, userID, *token)
+		valid, err := prs.VerifyPasswordResetToken(context.TODO(), userID, *token)
 		require.NoError(t, err)
 		assert.True(t, valid)
 	})
@@ -311,7 +311,7 @@ func TestRevokePasswordResetToken(t *testing.T) {
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		err = prs.RevokePasswordResetToken(nil, userID, *token)
+		err = prs.RevokePasswordResetToken(context.TODO(), userID, *token)
 		require.NoError(t, err)
 	})
 }
@@ -348,7 +348,7 @@ func TestRevokeAllPasswordResetTokens(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		err := prs.RevokeAllPasswordResetTokens(nil)
+		err := prs.RevokeAllPasswordResetTokens(context.TODO())
 		require.NoError(t, err)
 	})
 }

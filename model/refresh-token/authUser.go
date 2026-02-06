@@ -1,3 +1,4 @@
+// Package refresh_token contains data models for refresh token and JWT operations.
 package refresh_token
 
 // AuthUser represents an authenticated user with core identity fields.

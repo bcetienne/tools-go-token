@@ -100,10 +100,6 @@ func NewOTPServiceWithHasher(ctx context.Context, db *redis.Client, config *lib.
 		return nil, errors.New("one time password ttl is nil")
 	}
 
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	// Parse duration once during initialization
 	duration, err := time.ParseDuration(*config.OTPTTL)
 	if err != nil {
