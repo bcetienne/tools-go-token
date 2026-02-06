@@ -8,6 +8,7 @@ A comprehensive Go module providing secure authentication and token management f
 - **JWT access tokens**: Short-lived tokens for API authentication (stateless)
 - **Refresh tokens**: Long-lived tokens stored in Redis for session management (multi-device support)
 - **Password reset tokens**: Secure tokens for password recovery workflows (single active token per user)
+- **OTP (One-Time Password)**: 6-digit codes for passwordless authentication via email (single active code per user)
 
 ### Security & validation
 - **Password security**: Bcrypt hashing with configurable cost factor (14)
@@ -19,9 +20,9 @@ A comprehensive Go module providing secure authentication and token management f
 - **Automatic expiration**: Built-in TTL (time-to-live) for token management with service-specific durations
 - **High performance**: In-memory storage for fast token operations
 - **Multi-token support**: Users can be logged in on multiple devices (RefreshToken - default 1h)
-- **Single-token enforcement**: Only one password reset link active per user (PasswordReset - default 10m)
+- **Single-token enforcement**: Only one password reset link or OTP active per user (PasswordReset - default 10m, OTP - default 10m)
 - **No manual cleanup**: Redis automatically removes expired tokens
-- **Flexible TTL**: Different expiration times for refresh tokens (long-lived) and password reset tokens (short-lived)
+- **Flexible TTL**: Different expiration times for refresh tokens (long-lived), password reset tokens (short-lived), and OTP codes (very short-lived)
 
 ## 📋 Table of contents
 
@@ -94,15 +95,18 @@ func main() {
     // Configuration
     refreshTokenTTL := "7d"      // Long-lived refresh tokens
     passwordResetTTL := "15m"    // Short-lived reset tokens
+    otpTTL := "10m"              // Short-lived OTP codes
     config := lib.NewConfig(
         "your-app.com",           // Issuer
         "your-jwt-secret-key",    // JWT Secret
         "15m",                    // JWT Expiry
         "localhost:6379",         // Redis Address
         "",                       // Redis Password
+        "",                       // OTP Secret (for hashing)
         0,                        // Redis DB
         &refreshTokenTTL,         // Refresh Token TTL
         &passwordResetTTL,        // Password Reset TTL
+        &otpTTL,                  // OTP TTL
     )
 
     // Initialize services
@@ -114,6 +118,11 @@ func main() {
     accessTokenService := service.NewAccessTokenService(config)
 
     passwordResetService, err := service.NewPasswordResetService(ctx, redisClient, config)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    otpService, err := service.NewOTPService(ctx, redisClient, config)
     if err != nil {
         log.Fatal(err)
     }
@@ -182,15 +191,18 @@ type Config struct {
     JWTExpiry        string  // JWT expiration duration (e.g., "15m")
     RedisAddr        string  // Redis server address (e.g., "localhost:6379")
     RedisPwd         string  // Redis password (empty if no auth)
+    OTPSecret        string  // OTP secret for hashing (optional, bcrypt used)
     RedisDB          int     // Redis database number (0-15)
     RefreshTokenTTL  *string // Refresh token expiration (e.g., "7d", default: "1h")
     PasswordResetTTL *string // Password reset token expiration (e.g., "15m", default: "10m")
+    OTPTTL           *string // OTP code expiration (e.g., "10m", default: "10m")
 }
 ```
 
 **Why separate TTLs?**
 - **Refresh tokens** are session tokens used for long-term authentication across multiple devices. They need longer expiration times (hours to days).
 - **Password reset tokens** are security-sensitive and should expire quickly (minutes) to minimize the window for potential attacks.
+- **OTP codes** are very short-lived authentication codes that should expire quickly (5-15 minutes) for security and to encourage timely use.
 
 ### Environment variables (recommended)
 
@@ -201,6 +213,7 @@ JWT_SECRET=your-very-secure-secret-key-here
 JWT_EXPIRY=15m
 REFRESH_TOKEN_TTL=7d
 PASSWORD_RESET_TTL=15m
+OTP_TTL=10m
 REDIS_ADDR=localhost:6379
 REDIS_PASSWORD=
 REDIS_DB=0
@@ -217,6 +230,7 @@ func loadConfig() *lib.Config {
     redisDB, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
     refreshTokenTTL := os.Getenv("REFRESH_TOKEN_TTL")
     passwordResetTTL := os.Getenv("PASSWORD_RESET_TTL")
+    otpTTL := os.Getenv("OTP_TTL")
 
     return lib.NewConfig(
         os.Getenv("JWT_ISSUER"),
@@ -224,9 +238,11 @@ func loadConfig() *lib.Config {
         os.Getenv("JWT_EXPIRY"),
         os.Getenv("REDIS_ADDR"),
         os.Getenv("REDIS_PASSWORD"),
+        "",                    // OTP Secret (empty, bcrypt used)
         redisDB,
         &refreshTokenTTL,      // nil uses default "1h"
         &passwordResetTTL,     // nil uses default "10m"
+        &otpTTL,               // nil uses default "10m"
     )
 }
 ```
@@ -388,6 +404,78 @@ func passwordResetExample() {
 }
 ```
 
+### OTP (One-Time Password) passwordless authentication
+
+```go
+func otpAuthenticationExample() {
+    ctx := context.Background()
+    userID := 789
+
+    // === STEP 1: User requests OTP ===
+    // Create 6-digit OTP code (invalidates previous code automatically)
+    otp, err := otpService.CreateOTP(ctx, userID)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Send OTP via email (implementation depends on your email service)
+    sendOTPEmail(user.Email, *otp) // e.g., "Your code is: 387492"
+    log.Printf("OTP sent to user: %s", *otp)
+
+    // === STEP 2: User submits OTP ===
+    userSubmittedOTP := "387492" // From user input
+
+    // Verify the OTP
+    valid, err := otpService.VerifyOTP(ctx, userID, userSubmittedOTP)
+    if err != nil {
+        // Check for specific errors
+        if strings.Contains(err.Error(), "max attempts exceeded") {
+            log.Println("Too many failed attempts. Please request a new code.")
+            return
+        }
+        if strings.Contains(err.Error(), "invalid otp") {
+            log.Println("Invalid OTP format")
+            return
+        }
+        log.Fatal(err)
+    }
+
+    if valid {
+        // OTP is valid and has been automatically revoked (single-use)
+        log.Println("OTP verified successfully! User is authenticated.")
+
+        // Create session tokens for the user
+        refreshToken, _ := refreshTokenService.CreateRefreshToken(ctx, userID)
+        accessToken, _ := accessTokenService.CreateAccessToken(user)
+
+        log.Printf("User logged in with refresh token: %s", *refreshToken)
+    } else {
+        // OTP is invalid, expired, or user doesn't exist
+        log.Println("Invalid or expired OTP code")
+    }
+}
+
+// Additional OTP management functions
+func otpManagementExample() {
+    ctx := context.Background()
+    userID := 789
+
+    // Revoke a specific user's OTP (e.g., user requests new code)
+    err := otpService.RevokeOTP(ctx, userID)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Println("OTP revoked")
+
+    // Emergency: revoke ALL OTPs (e.g., security breach)
+    err = otpService.RevokeAllOTPs(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Println("All OTPs revoked")
+}
+```
+
 ## 🏗️ Architecture
 
 ### Project structure
@@ -396,13 +484,14 @@ func passwordResetExample() {
 .
 ├── lib/                    # Core utilities
 │   ├── config.go           # Configuration management
-│   ├── misc.go             # Random string generation
+│   ├── misc.go             # Random string & OTP generation
 │   ├── passwordHash.go     # Password hashing (bcrypt)
 │   └── redisClient.go      # Redis client utilities
 ├── validation/             # Validation logic
 │   ├── email.go            # Email validation
 │   ├── password.go         # Password validation
-│   └── token.go            # Token validation
+│   ├── token.go            # Token validation
+│   └── otp.go              # OTP validation
 ├── model/                  # Data models
 │   └── refresh-token/      # Refresh token specific models
 │       ├── authUser.go     # User authentication model
@@ -410,7 +499,8 @@ func passwordResetExample() {
 ├── service/                # Business logic
 │   ├── accessToken.go      # JWT access token service (stateless)
 │   ├── refreshToken.go     # Refresh token service (Redis)
-│   └── passwordReset.go    # Password reset service (Redis)
+│   ├── passwordReset.go    # Password reset service (Redis)
+│   └── otp.go              # OTP service (Redis)
 └── test/                   # Comprehensive tests
 ```
 
@@ -455,6 +545,26 @@ Only one active reset link per user. Creating new token invalidates previous one
 Short TTL minimizes security risk if reset email is compromised.
 ```
 
+#### OTP (single active code per user)
+```
+Pattern OTP: otp:{userID}
+Value: {bcrypt_hash_of_6_digit_code}
+TTL: OTPTTL (default: 10m, recommended: 5m-15m)
+
+Pattern Attempts: otp:attempts:{userID}
+Value: {attempt_count}
+TTL: Same as OTP
+
+Example:
+  otp:123 → "$2a$14$..." (bcrypt hash, expires in 10m)
+  otp:attempts:123 → "2" (2 failed attempts, expires in 10m)
+
+Only one active OTP code per user. Creating new code invalidates previous one.
+Rate limiting: Maximum 5 verification attempts before blocking.
+Single-use: OTP is automatically revoked after successful verification.
+Secure: Codes are hashed with bcrypt before storage (cost factor 14).
+```
+
 ### Token lifecycle
 
 **RefreshToken** (multi-token per user):
@@ -471,6 +581,13 @@ Short TTL minimizes security risk if reset email is compromised.
 3. **Revoke**: `RevokePasswordResetToken(ctx, userID, token)` → Verifies token before deletion (security)
 4. **RevokeAll**: Emergency revocation of ALL reset tokens
 5. **Expiration**: Automatic via Redis TTL
+
+**OTP** (single code per user, rate-limited):
+1. **Create**: `CreateOTP(ctx, userID)` → Returns `*string` (6-digit code), invalidates previous, resets attempts
+2. **Verify**: `VerifyOTP(ctx, userID, code)` → Checks bcrypt hash, enforces rate limit (5 attempts), auto-revokes on success
+3. **Revoke**: `RevokeOTP(ctx, userID)` → Deletes OTP and attempts counter
+4. **RevokeAll**: Emergency revocation of ALL OTPs
+5. **Expiration**: Automatic via Redis TTL for both OTP and attempts counter
 
 ## 🧪 Testing
 
@@ -504,13 +621,14 @@ go test -v -run TestCreateRefreshToken ./test/service
 
 ### Test coverage
 
-The project includes 76 comprehensive tests:
+The project includes 116 comprehensive tests:
 
 - **AccessToken**: 4 tests (JWT creation, verification, expiration)
 - **RefreshToken**: 32 tests (multi-token support, revocation, expiration)
 - **PasswordReset**: 40 tests (single-token enforcement, security, concurrency)
-- **Validation**: Password strength, email format, token validation
-- **Utilities**: Password hashing, random string generation
+- **OTP**: 40 tests (rate limiting, single-use, bcrypt hashing, expiration, uniqueness)
+- **Validation**: Password strength, email format, token validation, OTP format
+- **Utilities**: Password hashing, random string generation, OTP generation
 
 ## 📊 Performance considerations
 
@@ -544,6 +662,15 @@ The project includes 76 comprehensive tests:
 - Single active reset token per user (prevents multiple concurrent reset attempts)
 - PasswordReset revocation requires correct token (prevents unauthorized revocation)
 
+### OTP security
+- 6-digit codes generated with `crypto/rand` (cryptographically secure)
+- Bcrypt hashing with cost factor 14 (~200ms per operation, prevents brute force)
+- Rate limiting: Maximum 5 verification attempts per code
+- Single-use enforcement: Auto-revoked after successful verification
+- Single active code per user (creating new code invalidates previous)
+- Short TTL (default 10 minutes, configurable 5-15 minutes)
+- Attempt counter expires with OTP (prevents indefinite blocking)
+
 ### Redis security
 - Connection authentication support
 - TLS/SSL support for encrypted connections
@@ -562,6 +689,7 @@ export JWT_EXPIRY="15m"
 # Token TTL configuration
 export REFRESH_TOKEN_TTL="7d"    # Long-lived session tokens
 export PASSWORD_RESET_TTL="15m"  # Short-lived security tokens
+export OTP_TTL="10m"             # Very short-lived OTP codes
 
 # Redis configuration
 export REDIS_ADDR="your-redis-host:6379"
@@ -602,6 +730,7 @@ redis-cli ping
 - [ ] Set appropriate token expiry times:
   - [ ] RefreshTokenTTL: 7d-30d (balance security vs user experience)
   - [ ] PasswordResetTTL: 15m-30m (minimize security window)
+  - [ ] OTPTTL: 5m-15m (very short window for OTP codes)
   - [ ] JWTExpiry: 15m-1h (short-lived access tokens)
 - [ ] Configure Redis `maxmemory` policy
 - [ ] Monitor Redis memory usage
@@ -647,6 +776,7 @@ services:
       - JWT_EXPIRY=15m
       - REFRESH_TOKEN_TTL=7d
       - PASSWORD_RESET_TTL=15m
+      - OTP_TTL=10m
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - REDIS_DB=0

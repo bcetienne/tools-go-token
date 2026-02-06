@@ -9,9 +9,11 @@ type Config struct {
 	RedisDB          int
 	RefreshTokenTTL  *string
 	PasswordResetTTL *string
+	OTPSecret        string
+	OTPTTL           *string
 }
 
-func NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd string, redisDB int, refreshTokenTTL, passwordResetTTL *string) *Config {
+func NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd, otpSecret string, redisDB int, refreshTokenTTL, passwordResetTTL, otpTTL *string) *Config {
 	if refreshTokenTTL == nil {
 		ttl := "1h"
 		refreshTokenTTL = &ttl
@@ -19,6 +21,10 @@ func NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd string, redisDB
 	if passwordResetTTL == nil {
 		ttl := "10m"
 		passwordResetTTL = &ttl
+	}
+	if otpTTL == nil {
+		ttl := "10m"
+		otpTTL = &ttl
 	}
 
 	return &Config{
@@ -30,5 +36,7 @@ func NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd string, redisDB
 		RedisDB:          redisDB,
 		RefreshTokenTTL:  refreshTokenTTL,
 		PasswordResetTTL: passwordResetTTL,
+		OTPSecret:        otpSecret,
+		OTPTTL:           otpTTL,
 	}
 }
