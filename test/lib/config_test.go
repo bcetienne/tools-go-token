@@ -18,7 +18,7 @@ func Test_NewConfig_Success(t *testing.T) {
 	passwordResetTTL := "10m"
 
 	// Act
-	config := lib.NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd, redisDB, &refreshTokenTTL, &passwordResetTTL)
+	config := lib.NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd, "", redisDB, &refreshTokenTTL, &passwordResetTTL, nil)
 
 	// Assert
 	if config == nil {
@@ -76,7 +76,7 @@ func Test_NewConfig_WithNilTTLs(t *testing.T) {
 	redisDB := 0
 
 	// Act
-	config := lib.NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd, redisDB, nil, nil)
+	config := lib.NewConfig(issuer, jwtSecret, jwtExpiry, redisAddr, redisPwd, "", redisDB, nil, nil, nil)
 
 	// Assert
 	if config == nil {
@@ -179,7 +179,7 @@ func Test_NewConfig_TableDriven(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Act
-			config := lib.NewConfig(tt.issuer, tt.jwtSecret, tt.jwtExpiry, tt.redisAddr, tt.redisPwd, tt.redisDB, tt.refreshTokenTTL, tt.passwordResetTTL)
+			config := lib.NewConfig(tt.issuer, tt.jwtSecret, tt.jwtExpiry, tt.redisAddr, tt.redisPwd, "", tt.redisDB, tt.refreshTokenTTL, tt.passwordResetTTL, nil)
 
 			// Assert
 			if config == nil {
@@ -287,7 +287,7 @@ func Test_Config_StructFields(t *testing.T) {
 }
 
 func Test_Config_Modification(t *testing.T) {
-	config := lib.NewConfig("original", "original", "original", "original", "original", 0, stringPtr("original"), stringPtr("original"))
+	config := lib.NewConfig("original", "original", "original", "original", "original", "", 0, stringPtr("original"), stringPtr("original"), nil)
 
 	config.Issuer = "modified"
 	config.JWTSecret = "modified"
@@ -328,7 +328,7 @@ func Test_Config_TTLPointers(t *testing.T) {
 	t.Run("RefreshTokenTTL pointer behavior", func(t *testing.T) {
 		refreshTokenTTL := "1h"
 		passwordResetTTL := "10m"
-		config := lib.NewConfig("issuer", "secret", "15m", "localhost:6379", "", 0, &refreshTokenTTL, &passwordResetTTL)
+		config := lib.NewConfig("issuer", "secret", "15m", "localhost:6379", "", "", 0, &refreshTokenTTL, &passwordResetTTL, nil)
 
 		refreshTokenTTL = "2h"
 
@@ -340,7 +340,7 @@ func Test_Config_TTLPointers(t *testing.T) {
 	t.Run("PasswordResetTTL pointer behavior", func(t *testing.T) {
 		refreshTokenTTL := "1h"
 		passwordResetTTL := "10m"
-		config := lib.NewConfig("issuer", "secret", "15m", "localhost:6379", "", 0, &refreshTokenTTL, &passwordResetTTL)
+		config := lib.NewConfig("issuer", "secret", "15m", "localhost:6379", "", "", 0, &refreshTokenTTL, &passwordResetTTL, nil)
 
 		passwordResetTTL = "30m"
 
@@ -352,7 +352,7 @@ func Test_Config_TTLPointers(t *testing.T) {
 	t.Run("Setting TTLs to nil", func(t *testing.T) {
 		refreshTokenTTL := "1h"
 		passwordResetTTL := "10m"
-		config := lib.NewConfig("issuer", "secret", "15m", "localhost:6379", "", 0, &refreshTokenTTL, &passwordResetTTL)
+		config := lib.NewConfig("issuer", "secret", "15m", "localhost:6379", "", "", 0, &refreshTokenTTL, &passwordResetTTL, nil)
 
 		config.RefreshTokenTTL = nil
 		config.PasswordResetTTL = nil
@@ -367,7 +367,7 @@ func Test_Config_TTLPointers(t *testing.T) {
 }
 
 func Test_Config_ZeroValues(t *testing.T) {
-	config := lib.NewConfig("", "", "", "", "", 0, nil, nil)
+	config := lib.NewConfig("", "", "", "", "", "", 0, nil, nil, nil)
 
 	if config.Issuer != "" {
 		t.Error("Empty string should be preserved")
