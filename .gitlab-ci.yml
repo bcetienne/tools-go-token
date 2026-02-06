@@ -31,11 +31,11 @@ format:
   image: golang:${GO_VERSION}
   script:
     - echo "Checking code formatting..."
-    - gofmt -l .
     - |
-      if [ -n "$(gofmt -l .)" ]; then
+      UNFORMATTED=$(find . -name "*.go" -not -path "./.go/*" -not -path "./vendor/*" -exec gofmt -l {} +)
+      if [ -n "$UNFORMATTED" ]; then
         echo "The following files are not formatted correctly:"
-        gofmt -l .
+        echo "$UNFORMATTED"
         echo "Please run 'go fmt ./...' to format your code"
         exit 1
       fi
