@@ -75,7 +75,7 @@ test:
     - go mod verify
   script:
     - echo "Running tests with coverage..."
-    - go test -v -race -coverprofile=coverage.out -covermode=atomic -timeout=20m ./...
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... -timeout=20m ./...
     - echo "Generating coverage report..."
     - go tool cover -func=coverage.out
     - |
@@ -123,7 +123,7 @@ test_main:
   before_script:
     - go mod download
   script:
-    - go test -v -race -coverprofile=coverage.out -covermode=atomic -timeout=20m ./...
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... -timeout=20m ./...
     - go tool cover -func=coverage.out
   artifacts:
     paths:
