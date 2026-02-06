@@ -6,7 +6,7 @@ variables:
   GO_VERSION: "1.25"
   GOPATH: $CI_PROJECT_DIR/.go
   GOCACHE: $CI_PROJECT_DIR/.cache/go-build
-  GOLANGCI_LINT_VERSION: "v2.3.0"
+  GOLANGCI_LINT_VERSION: "latest"
 
   # Docker configuration for testcontainers
   DOCKER_DRIVER: overlay2
