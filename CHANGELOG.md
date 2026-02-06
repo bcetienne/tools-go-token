@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-02-06
+
+### Added
+- Complete godoc documentation for all public API elements (36 items)
+  - Service layer: AccessTokenService, RefreshTokenService, PasswordResetService
+  - Validation layer: IsIncomingTokenValid function
+  - Library layer: Config and RedisClient types
+  - Model layer: AuthUser and Claim types
+- Documentation follows godoc standards with examples and detailed descriptions
+
+### Fixed
+- test/lib/config_test.go: Add missing otpSecret and otpTTL parameters to NewConfig calls (8 fixes)
+- test/service/otp_test.go: Fix TestOTPInvalidConfig to expect error from NewOTPService
+- All tests now pass (exit code 0)
+
 ## [3.0.0] - 2026-02-06
 
 ### Added

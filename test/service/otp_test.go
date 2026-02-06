@@ -540,11 +540,9 @@ func TestOTPInvalidConfig(t *testing.T) {
 	t.Run("Should fail with invalid duration format", func(t *testing.T) {
 		otpTTL := "invalid-duration"
 		invalidConfig := &lib.Config{OTPTTL: &otpTTL}
-		os, err := service.NewOTPService(context.Background(), redisDB, invalidConfig)
-		require.NoError(t, err)
-
-		_, err = os.CreateOTP(context.Background(), 123)
+		_, err := service.NewOTPService(context.Background(), redisDB, invalidConfig)
 		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid OTP TTL format")
 		assert.Contains(t, err.Error(), "time: invalid duration")
 	})
 }
