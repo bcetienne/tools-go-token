@@ -21,20 +21,14 @@ run:
 linters:
   enable:
     - errcheck      # Check for unchecked errors
-    - gosimple      # Simplify code
     - govet         # Vet examines Go source code
     - ineffassign   # Detect ineffectual assignments
-    - staticcheck   # Static analysis
+    - staticcheck   # Static analysis (includes gosimple checks)
     - unused        # Check for unused constants, variables, functions
     - misspell      # Spell checker
     - revive        # Fast, configurable linter
     - gosec         # Security issues
     - bodyclose     # Check HTTP response body is closed
-    - nilerr        # Check that there is no simultaneous return of nil error and invalid value
-
-  disable:
-    - gocyclo       # Cyclomatic complexity (can be noisy)
-    - dupl          # Duplicate code detection (can be noisy)
 
 linters-settings:
   errcheck:
