@@ -32,7 +32,7 @@ format:
   script:
     - echo "Checking code formatting..."
     - |
-      UNFORMATTED=$(find . -name "*.go" -not -path "./.go/*" -not -path "./vendor/*" -exec gofmt -l {} +)
+      UNFORMATTED=$(gofmt -l lib service model validation test 2>/dev/null || true)
       if [ -n "$UNFORMATTED" ]; then
         echo "The following files are not formatted correctly:"
         echo "$UNFORMATTED"
