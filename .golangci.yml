@@ -26,7 +26,6 @@ linters:
     - ineffassign   # Detect ineffectual assignments
     - staticcheck   # Static analysis
     - unused        # Check for unused constants, variables, functions
-    - gofmt         # Check if code is formatted
     - goimports     # Check imports formatting
     - misspell      # Spell checker
     - revive        # Fast, configurable linter
