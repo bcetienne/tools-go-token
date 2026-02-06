@@ -1,0 +1,86 @@
+# golangci-lint configuration
+# https://golangci-lint.run/usage/configuration/
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+
+  # Include test files
+  tests: true
+
+  # Which dirs to skip: issues from them won't be reported
+  skip-dirs:
+    - vendor
+
+  # Which files to skip: they will be analyzed, but issues from them won't be reported
+  skip-files:
+    - ".*\\.pb\\.go$"
+
+linters:
+  enable:
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Vet examines Go source code
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Static analysis
+    - typecheck     # Type-check code
+    - unused        # Check for unused constants, variables, functions
+    - gofmt         # Check if code is formatted
+    - goimports     # Check imports formatting
+    - misspell      # Spell checker
+    - revive        # Fast, configurable linter
+    - gosec         # Security issues
+    - bodyclose     # Check HTTP response body is closed
+    - nilerr        # Check that there is no simultaneous return of nil error and invalid value
+
+  disable:
+    - gocyclo       # Cyclomatic complexity (can be noisy)
+    - dupl          # Duplicate code detection (can be noisy)
+
+linters-settings:
+  errcheck:
+    # Report about not checking errors in type assertions
+    check-type-assertions: true
+
+  govet:
+    # Enable all analyzers
+    enable-all: true
+
+  revive:
+    rules:
+      - name: exported
+        disabled: true  # Disable requirement for comments on exported items (can add later if needed)
+
+  gosec:
+    # Exclude some checks that might be too strict for this project
+    excludes:
+      - G104  # Audit errors not checked (covered by errcheck)
+
+  misspell:
+    locale: US
+
+issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text
+  max-same-issues: 0
+
+  # Excluding configuration per-path, per-linter, per-text and per-source
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gosec      # Security checks less relevant in test files
+        - errcheck   # Error checking in tests can be relaxed
+
+    # Exclude specific golint warnings
+    - text: "should have comment"
+      linters:
+        - revive
+
+    # Ignore "shadow" warnings for err variables in tests
+    - path: _test\.go
+      text: "shadow"
+      linters:
+        - govet

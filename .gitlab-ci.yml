@@ -1,0 +1,133 @@
+# GitLab CI/CD Pipeline for go-token project
+# This pipeline runs formatting checks, linting, tests, and builds
+
+variables:
+  # Go environment variables
+  GO_VERSION: "1.25"
+  GOPATH: $CI_PROJECT_DIR/.go
+  GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+  GOLANGCI_LINT_VERSION: "v2.3.0"
+
+  # Docker configuration for testcontainers
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+# Cache configuration to speed up builds
+cache:
+  paths:
+    - .go/pkg/mod/
+    - .cache/go-build/
+
+# Define pipeline stages
+stages:
+  - format
+  - lint
+  - test
+  - build
+
+# Check code formatting
+format:
+  stage: format
+  image: golang:${GO_VERSION}
+  script:
+    - echo "Checking code formatting..."
+    - gofmt -l .
+    - |
+      if [ -n "$(gofmt -l .)" ]; then
+        echo "The following files are not formatted correctly:"
+        gofmt -l .
+        echo "Please run 'go fmt ./...' to format your code"
+        exit 1
+      fi
+    - echo "All files are properly formatted"
+  only:
+    - branches
+    - merge_requests
+
+# Run golangci-lint
+lint:
+  stage: lint
+  image: golangci/golangci-lint:${GOLANGCI_LINT_VERSION}
+  script:
+    - echo "Running golangci-lint..."
+    - golangci-lint run --timeout=5m ./...
+  allow_failure: true
+  only:
+    - branches
+    - merge_requests
+
+# Run tests with coverage
+test:
+  stage: test
+  image: golang:${GO_VERSION}
+  services:
+    - docker:28-dind
+  variables:
+    # Docker host for testcontainers
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: /certs/client
+    # Testcontainers configuration
+    TESTCONTAINERS_RYUK_DISABLED: "false"
+  before_script:
+    - echo "Installing dependencies..."
+    - go mod download
+    - go mod verify
+  script:
+    - echo "Running tests with coverage..."
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+    - echo "Generating coverage report..."
+    - go tool cover -func=coverage.out
+    - |
+      COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+      echo "Total coverage: ${COVERAGE}%"
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.out
+    paths:
+      - coverage.out
+    expire_in: 1 week
+  only:
+    - branches
+    - merge_requests
+
+# Verify the code builds successfully
+build:
+  stage: build
+  image: golang:${GO_VERSION}
+  before_script:
+    - echo "Installing dependencies..."
+    - go mod download
+  script:
+    - echo "Building project..."
+    - go build -v ./...
+    - echo "Build successful!"
+  only:
+    - branches
+    - merge_requests
+
+# Optional: Run tests on main branch after merge
+test_main:
+  stage: test
+  image: golang:${GO_VERSION}
+  services:
+    - docker:28-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: /certs/client
+    TESTCONTAINERS_RYUK_DISABLED: "false"
+  before_script:
+    - go mod download
+  script:
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+    - go tool cover -func=coverage.out
+  artifacts:
+    paths:
+      - coverage.out
+    expire_in: 30 days
+  only:
+    - main
