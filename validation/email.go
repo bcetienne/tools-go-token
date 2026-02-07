@@ -1,4 +1,3 @@
-// Package validation provides input validation utilities for emails, passwords, tokens, and OTPs.
 package validation
 
 import "regexp"

@@ -37,7 +37,7 @@ func TestNewOTPService(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		_, err := service.NewOTPService(context.TODO(), redisDB, config)
+		_, err := service.NewOTPService(nil, redisDB, config)
 		require.NoError(t, err)
 	})
 
@@ -84,7 +84,7 @@ func TestCreateOTP(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		otp, err := os.CreateOTP(context.TODO(), 123)
+		otp, err := os.CreateOTP(nil, 123)
 		require.NoError(t, err)
 		assert.NotNil(t, otp)
 		assert.Equal(t, 6, len(*otp))
@@ -208,7 +208,7 @@ func TestVerifyOTP(t *testing.T) {
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
-		valid, err := os.VerifyOTP(context.TODO(), userID, *otp)
+		valid, err := os.VerifyOTP(nil, userID, *otp)
 		require.NoError(t, err)
 		assert.True(t, valid)
 	})
@@ -437,7 +437,7 @@ func TestRevokeOTP(t *testing.T) {
 		_, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
-		err = os.RevokeOTP(context.TODO(), userID)
+		err = os.RevokeOTP(nil, userID)
 		require.NoError(t, err)
 	})
 
@@ -531,7 +531,7 @@ func TestRevokeAllOTPs(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		err := os.RevokeAllOTPs(context.TODO())
+		err := os.RevokeAllOTPs(nil)
 		require.NoError(t, err)
 	})
 }

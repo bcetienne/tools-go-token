@@ -241,7 +241,7 @@ func Test_AuthUser_Modification_AfterCreation(t *testing.T) {
 }
 
 func Test_AuthUser_JSONTags(t *testing.T) {
-	// Test conceptual - vérifie que la structure a les bons tags JSON
+	// Test conceptuel - vérifie que la structure a les bons tags JSON
 	// (en pratique, vous testeriez cela avec du marshalling/unmarshalling JSON réel)
 	authUser := modelRefreshToken.NewAuthUser(123, "json-test", "json@test.com")
 

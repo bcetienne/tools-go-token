@@ -1,4 +1,3 @@
-// Package lib provides core library components for the authentication module.
 package lib
 
 // Config holds the configuration for all authentication services.

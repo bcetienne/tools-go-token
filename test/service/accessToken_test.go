@@ -111,7 +111,7 @@ func Test_Auth_AccessToken_VerifyAccessToken_TableDriven(t *testing.T) {
 					t.Fatalf("The test expect no error, got : %v", err)
 				}
 				if verified.UserID != user.UserID {
-					t.Fatalf("The user ID does not match. Expected %d, got %d", user.UserID, verified.UserID)
+					t.Fatalf("Ther user ID does not match. Expected %d, got %d", user.UserID, verified.UserID)
 				}
 				if verified.Issuer != config.Issuer {
 					if verified.Subject != user.Email {

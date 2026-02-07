@@ -30,7 +30,7 @@ func TestNewRefreshTokenService(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		_, err := service.NewRefreshTokenService(context.TODO(), redisDB, config)
+		_, err := service.NewRefreshTokenService(nil, redisDB, config)
 		require.NoError(t, err)
 	})
 
@@ -72,7 +72,7 @@ func TestCreateRefreshToken(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		token, err := rts.CreateRefreshToken(context.TODO(), 123)
+		token, err := rts.CreateRefreshToken(nil, 123)
 		require.NoError(t, err)
 		assert.NotNil(t, token)
 		assert.NotEmpty(t, *token)
@@ -142,7 +142,7 @@ func TestVerifyRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		valid, err := rts.VerifyRefreshToken(context.TODO(), userID, *token)
+		valid, err := rts.VerifyRefreshToken(nil, userID, *token)
 		require.NoError(t, err)
 		assert.True(t, valid)
 	})
@@ -259,7 +259,7 @@ func TestRevokeRefreshToken(t *testing.T) {
 		token, err := rts.CreateRefreshToken(context.Background(), userID)
 		require.NoError(t, err)
 
-		err = rts.RevokeRefreshToken(context.TODO(), *token, userID)
+		err = rts.RevokeRefreshToken(nil, *token, userID)
 		require.NoError(t, err)
 	})
 }
@@ -315,7 +315,7 @@ func TestRevokeAllUserRefreshTokens(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		err := rts.RevokeAllUserRefreshTokens(context.TODO(), 123)
+		err := rts.RevokeAllUserRefreshTokens(nil, 123)
 		require.NoError(t, err)
 	})
 }
@@ -352,7 +352,7 @@ func TestRevokeAllRefreshTokens(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		err := rts.RevokeAllRefreshTokens(context.TODO())
+		err := rts.RevokeAllRefreshTokens(nil)
 		require.NoError(t, err)
 	})
 }

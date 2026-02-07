@@ -1,4 +1,3 @@
-// Package service implements authentication services for access tokens, refresh tokens, password reset, and OTP.
 package service
 
 import (
@@ -135,7 +134,7 @@ func (at *AccessTokenService) CreateAccessToken(user *modelRefreshToken.AuthUser
 //	// Token valid - proceed with authenticated request
 //	userID := claim.UserID
 func (at *AccessTokenService) VerifyAccessToken(token string) (*modelRefreshToken.Claim, error) {
-	t, err := jwt.ParseWithClaims(token, &modelRefreshToken.Claim{}, func(_ *jwt.Token) (any, error) {
+	t, err := jwt.ParseWithClaims(token, &modelRefreshToken.Claim{}, func(token *jwt.Token) (any, error) {
 		return []byte(at.config.JWTSecret), nil
 	}, jwt.WithLeeway(5*time.Second))
 
