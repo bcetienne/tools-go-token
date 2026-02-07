@@ -64,7 +64,7 @@ type PasswordResetService struct {
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func NewPasswordResetService(ctx context.Context, db *redis.Client, config *lib.Config) (*PasswordResetService, error) {
+func NewPasswordResetService(_ context.Context, db *redis.Client, config *lib.Config) (*PasswordResetService, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}

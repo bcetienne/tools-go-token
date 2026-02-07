@@ -43,8 +43,6 @@ linters-settings:
     rules:
       - name: exported
         disabled: true  # Disable requirement for comments on exported items (can add later if needed)
-      - name: var-naming
-        disabled: true  # Allow underscores in package names
 
   gosec:
     # Exclude some checks that might be too strict for this project
@@ -79,3 +77,8 @@ issues:
       text: "shadow"
       linters:
         - govet
+
+    # Allow underscores in package names (refresh_token package)
+    - text: "don't use an underscore in package name"
+      linters:
+        - revive
