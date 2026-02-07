@@ -66,7 +66,7 @@ type RefreshTokenService struct {
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func NewRefreshTokenService(_ context.Context, db *redis.Client, config *lib.Config) (*RefreshTokenService, error) {
+func NewRefreshTokenService(ctx context.Context, db *redis.Client, config *lib.Config) (*RefreshTokenService, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}

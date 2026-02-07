@@ -92,7 +92,7 @@ func NewOTPService(ctx context.Context, db *redis.Client, config *lib.Config) (*
 //
 //	hasher := lib.NewPasswordHashWithCost(4) // Fast for tests
 //	otpService, err := service.NewOTPServiceWithHasher(ctx, redisClient, config, hasher)
-func NewOTPServiceWithHasher(_ context.Context, db *redis.Client, config *lib.Config, hasher lib.PasswordHashInterface) (*OTPService, error) {
+func NewOTPServiceWithHasher(ctx context.Context, db *redis.Client, config *lib.Config, hasher lib.PasswordHashInterface) (*OTPService, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
