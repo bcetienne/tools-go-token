@@ -42,7 +42,7 @@ A comprehensive Go module providing secure authentication and token management f
 ## 🛠️ Installation
 
 ```bash
-go get github.com/bcetienne/tools-go-token
+go get github.com/bcetienne/tools-go-token/v3
 ```
 
 ### Dependencies
@@ -71,9 +71,9 @@ import (
     "context"
     "log"
 
-    "github.com/bcetienne/tools-go-token/lib"
-    "github.com/bcetienne/tools-go-token/service"
-    "github.com/bcetienne/tools-go-token/validation"
+    "github.com/bcetienne/tools-go-token/v3/lib"
+    "github.com/bcetienne/tools-go-token/v3/service"
+    "github.com/bcetienne/tools-go-token/v3/validation"
     "github.com/redis/go-redis/v9"
 )
 
@@ -134,7 +134,7 @@ func main() {
 ### 2. Password validation
 
 ```go
-import "github.com/bcetienne/tools-go-token/validation"
+import "github.com/bcetienne/tools-go-token/v3/validation"
 
 func validateUserPassword() {
     validator := validation.NewPasswordValidation()
@@ -158,7 +158,7 @@ func validateUserPassword() {
 ```go
 import (
     modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
-    "github.com/bcetienne/tools-go-token/lib"
+    "github.com/bcetienne/tools-go-token/v3/lib"
 )
 
 func authenticationFlow() {
@@ -252,7 +252,7 @@ func loadConfig() *lib.Config {
 ### Email validation
 
 ```go
-import "github.com/bcetienne/tools-go-token/validation"
+import "github.com/bcetienne/tools-go-token/v3/validation"
 
 func validateEmail() {
     emailValidator := validation.NewEmailValidation()
@@ -276,7 +276,7 @@ func validateEmail() {
 ### Password hashing & verification
 
 ```go
-import "github.com/bcetienne/tools-go-token/lib"
+import "github.com/bcetienne/tools-go-token/v3/lib"
 
 func passwordExample() {
     hasher := lib.NewPasswordHash()
