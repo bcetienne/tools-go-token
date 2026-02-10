@@ -3,7 +3,7 @@ package lib
 import (
 	"testing"
 
-	"github.com/bcetienne/tools-go-token/lib"
+	"github.com/bcetienne/tools-go-token/v4/lib"
 )
 
 func Test_NewConfig_Success(t *testing.T) {

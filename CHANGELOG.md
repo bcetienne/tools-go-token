@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-02-10
+
+### Changed - BREAKING
+
+- **User ID Type**: All user IDs changed from `int` to `string` across all services
+  - `RefreshTokenService`: `CreateRefreshToken(ctx, userID string)` (was `int`)
+  - `PasswordResetService`: `CreatePasswordResetToken(ctx, userID string)` (was `int`)
+  - `OTPService`: `CreateOTP(ctx, userID string)` (was `int`)
+  - Validation: User IDs validated as non-empty strings (was `> 0` for ints)
+- **AuthUser Model**: Unified identifier structure
+  - Old: `NewAuthUser(userID int, uuid string, email string)` with separate `UserID` and `UserUUID` fields
+  - New: `NewAuthUser(id string, email string)` with single `ID` field
+  - Supports UUIDs, numeric IDs as strings, or any unique identifier
+- **JWT Claim Structure**: Aligned with RFC 7519 standards
+  - User ID moved from custom `user_id` claim to standard `sub` (Subject) claim
+  - Email moved from `sub` to custom `email` claim
+  - Access user ID via `claim.Subject` instead of `claim.UserID`
+- **Module Path**: Updated to `github.com/bcetienne/tools-go-token/v3` for semantic versioning
+
+### Benefits
+
+- **Platform Flexibility**: Support for both UUID-based and numeric ID systems
+- **Standards Compliance**: JWT tokens now follow RFC 7519 recommendations
+- **Unified API**: Single ID field simplifies user identity management
+- **Type Safety**: String IDs prevent accidental ID confusion across different platforms
+
+### Migration Guide
+
+```go
+// v3.x (old)
+user := NewAuthUser(123, "550e8400-...", "user@example.com")
+token, _ := refreshService.CreateRefreshToken(ctx, 123)
+userID := claim.UserID  // int
+
+// v4.x (new)
+user := NewAuthUser("123", "user@example.com")  // or UUID: "550e8400-..."
+token, _ := refreshService.CreateRefreshToken(ctx, "123")
+userID := claim.Subject  // string
+```
+
+### Implementation Details
+
+- Redis key patterns remain compatible: `refresh:{userID}:{token}`, `password_reset:{userID}`, `otp:{userID}`
+- All 116 tests updated and passing
+- Complete documentation update in CLAUDE.md and README.md
+
+---
+
 ## [3.1.0] - 2026-02-06
 
 ### Added

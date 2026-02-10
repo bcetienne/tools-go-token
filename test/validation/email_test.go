@@ -3,7 +3,7 @@ package validation
 import (
 	"testing"
 
-	"github.com/bcetienne/tools-go-token/validation"
+	"github.com/bcetienne/tools-go-token/v4/validation"
 )
 
 func Test_Validation_Email_TableDriven(t *testing.T) {

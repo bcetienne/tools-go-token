@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/bcetienne/tools-go-token/lib"
+	"github.com/bcetienne/tools-go-token/v4/lib"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	redisTC "github.com/testcontainers/testcontainers-go/modules/redis"

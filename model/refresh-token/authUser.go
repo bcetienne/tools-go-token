@@ -4,31 +4,28 @@ package refresh_token
 // Used as input for JWT access token generation and service operations.
 //
 // Fields:
-//   - UserID: Numeric user identifier (primary key)
-//   - UserUUID: Universal unique identifier for the user
-//   - Email: User's email address (used as JWT subject)
+//   - ID: Universal user identifier (UUID string or numeric ID as string)
+//   - Email: User's email address
 //
 // JSON serialization:
 //   - Tags enable JSON marshaling/unmarshaling
-//   - Example: {"user_id": 123, "user_uuid": "uuid", "email": "user@example.com"}
+//   - Example: {"id": "550e8400-e29b-41d4-a716-446655440000", "email": "user@example.com"}
+//   - Example: {"id": "123", "email": "user@example.com"}
 type AuthUser struct {
-	UserID   int    `json:"user_id"`
-	UserUUID string `json:"user_uuid"`
-	Email    string `json:"email"`
+	ID    string `json:"id"`
+	Email string `json:"email"`
 }
 
 // AuthUserInterface defines the methods for accessing user identity fields.
 type AuthUserInterface interface {
-	GetUserID() int
+	GetID() string
 	GetEmail() string
-	GetUserUUID() string
 }
 
 // NewAuthUser creates a new AuthUser instance with the provided identity fields.
 //
 // Parameters:
-//   - userID: Numeric user identifier (typically from database primary key)
-//   - uuid: Universal unique identifier (typically UUID v4)
+//   - id: User identifier as string (UUID, numeric ID, or any unique identifier)
 //   - email: User's email address
 //
 // Returns:
@@ -36,29 +33,26 @@ type AuthUserInterface interface {
 //
 // Example:
 //
-//	user := modelRefreshToken.NewAuthUser(123, "550e8400-e29b-41d4-a716-446655440000", "user@example.com")
+//	// With UUID
+//	user := modelRefreshToken.NewAuthUser("550e8400-e29b-41d4-a716-446655440000", "user@example.com")
+//	// With numeric ID
+//	user := modelRefreshToken.NewAuthUser("123", "user@example.com")
 //	accessToken, err := accessService.CreateAccessToken(user)
-func NewAuthUser(userID int, uuid, email string) *AuthUser {
+func NewAuthUser(id, email string) *AuthUser {
 	return &AuthUser{
-		UserID:   userID,
-		UserUUID: uuid,
-		Email:    email,
+		ID:    id,
+		Email: email,
 	}
 }
 
+// GetID returns the user's unique identifier.
+// Used as the JWT Subject claim in access tokens.
+func (au *AuthUser) GetID() string {
+	return au.ID
+}
+
 // GetEmail returns the user's email address.
-// Used as the JWT subject claim in access tokens.
+// Used as a custom claim in JWT tokens.
 func (au *AuthUser) GetEmail() string {
 	return au.Email
-}
-
-// GetUserUUID returns the user's universal unique identifier.
-func (au *AuthUser) GetUserUUID() string {
-	return au.UserUUID
-}
-
-// GetUserID returns the user's numeric identifier.
-// Used as a custom claim in JWT tokens for quick user lookup.
-func (au *AuthUser) GetUserID() int {
-	return au.UserID
 }

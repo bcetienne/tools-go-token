@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/bcetienne/tools-go-token/lib"
-	"github.com/bcetienne/tools-go-token/service"
+	"github.com/bcetienne/tools-go-token/v4/lib"
+	"github.com/bcetienne/tools-go-token/v4/service"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,7 @@ func TestCreateOTP(t *testing.T) {
 	os := setupOTPService(t)
 
 	t.Run("Should create OTP successfully", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		otp, err := os.CreateOTP(context.Background(), userID)
 
 		require.NoError(t, err)
@@ -71,24 +72,23 @@ func TestCreateOTP(t *testing.T) {
 	})
 
 	t.Run("Should fail with invalid user ID", func(t *testing.T) {
-		_, err := os.CreateOTP(context.Background(), 0)
+		_, err := os.CreateOTP(context.Background(), "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 
-		_, err = os.CreateOTP(context.Background(), -1)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		otp, err := os.CreateOTP(nil, 123)
+		otp, err := os.CreateOTP(nil, "123")
 		require.NoError(t, err)
 		assert.NotNil(t, otp)
 		assert.Equal(t, 6, len(*otp))
 	})
 
 	t.Run("Should replace existing OTP when creating new one for same user", func(t *testing.T) {
-		userID := 456
+		userID := "456"
 		otp1, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -110,8 +110,8 @@ func TestCreateOTP(t *testing.T) {
 	})
 
 	t.Run("Should generate different OTPs for different users", func(t *testing.T) {
-		userID1 := 100
-		userID2 := 200
+		userID1 := "100"
+		userID2 := "200"
 
 		otp1, err := os.CreateOTP(context.Background(), userID1)
 		require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestCreateOTP(t *testing.T) {
 		// Generate multiple OTPs to increase chance of getting one with leading zeros
 		hasLeadingZero := false
 		for i := 0; i < 100; i++ {
-			otp, err := os.CreateOTP(context.Background(), 1000+i)
+			otp, err := os.CreateOTP(context.Background(), strconv.Itoa(1000+i))
 			require.NoError(t, err)
 			if (*otp)[0] == '0' {
 				hasLeadingZero = true
@@ -147,7 +147,7 @@ func TestVerifyOTP(t *testing.T) {
 	os := setupOTPService(t)
 
 	t.Run("Should verify valid OTP", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -157,51 +157,50 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("Should return false for non-existent OTP", func(t *testing.T) {
-		userID := 999
+		userID := "999"
 		valid, err := os.VerifyOTP(context.Background(), userID, "123456")
 		require.NoError(t, err)
 		assert.False(t, valid)
 	})
 
 	t.Run("Should fail with invalid user ID", func(t *testing.T) {
-		_, err := os.VerifyOTP(context.Background(), 0, "123456")
+		_, err := os.VerifyOTP(context.Background(), "", "123456")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 
-		_, err = os.VerifyOTP(context.Background(), -1, "123456")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should fail with empty OTP", func(t *testing.T) {
-		_, err := os.VerifyOTP(context.Background(), 123, "")
+		_, err := os.VerifyOTP(context.Background(), "123", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid otp")
 	})
 
 	t.Run("Should fail with OTP too short", func(t *testing.T) {
-		_, err := os.VerifyOTP(context.Background(), 123, "12345")
+		_, err := os.VerifyOTP(context.Background(), "123", "12345")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid otp")
 	})
 
 	t.Run("Should fail with OTP too long", func(t *testing.T) {
-		_, err := os.VerifyOTP(context.Background(), 123, "1234567")
+		_, err := os.VerifyOTP(context.Background(), "123", "1234567")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid otp")
 	})
 
 	t.Run("Should fail with non-numeric OTP", func(t *testing.T) {
-		_, err := os.VerifyOTP(context.Background(), 123, "12345a")
+		_, err := os.VerifyOTP(context.Background(), "123", "12345a")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid otp")
 
-		_, err = os.VerifyOTP(context.Background(), 123, "abcdef")
+		_, err = os.VerifyOTP(context.Background(), "123", "abcdef")
 		require.Error(t, err)
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -211,7 +210,7 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("Should return false for wrong OTP", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -227,12 +226,12 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("Should return false for wrong user ID", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
 		// Try with different user ID
-		valid, err := os.VerifyOTP(context.Background(), 456, *otp)
+		valid, err := os.VerifyOTP(context.Background(), "456", *otp)
 		require.NoError(t, err)
 		assert.False(t, valid)
 	})
@@ -244,7 +243,7 @@ func TestVerifyOTP(t *testing.T) {
 		shortOS, err := service.NewOTPService(context.Background(), redisDB, shortConfig)
 		require.NoError(t, err)
 
-		userID := 789
+		userID := "789"
 		otp, err := shortOS.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -258,7 +257,7 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("Should auto-revoke OTP after successful verification (single-use)", func(t *testing.T) {
-		userID := 999
+		userID := "999"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -274,7 +273,7 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("Should verify OTP with leading zeros", func(t *testing.T) {
-		userID := 555
+		userID := "555"
 		// Keep creating OTPs until we get one with leading zero
 		var otp *string
 		var err error
@@ -303,7 +302,7 @@ func TestOTPRateLimiting(t *testing.T) {
 	os := setupOTPService(t)
 
 	t.Run("Should block verification after 5 failed attempts", func(t *testing.T) {
-		userID := 456
+		userID := "456"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -321,7 +320,7 @@ func TestOTPRateLimiting(t *testing.T) {
 	})
 
 	t.Run("Should allow verification before reaching rate limit", func(t *testing.T) {
-		userID := 789
+		userID := "789"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -339,7 +338,7 @@ func TestOTPRateLimiting(t *testing.T) {
 	})
 
 	t.Run("Should reset rate limit when creating new OTP", func(t *testing.T) {
-		userID := 321
+		userID := "321"
 		_, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -359,7 +358,7 @@ func TestOTPRateLimiting(t *testing.T) {
 	})
 
 	t.Run("Should not increment attempts on successful verification", func(t *testing.T) {
-		userID := 654
+		userID := "654"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -387,7 +386,7 @@ func TestRevokeOTP(t *testing.T) {
 	os := setupOTPService(t)
 
 	t.Run("Should revoke OTP successfully", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		otp, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -400,22 +399,21 @@ func TestRevokeOTP(t *testing.T) {
 	})
 
 	t.Run("Should fail with invalid user ID", func(t *testing.T) {
-		err := os.RevokeOTP(context.Background(), 0)
+		err := os.RevokeOTP(context.Background(), "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 
-		err = os.RevokeOTP(context.Background(), -1)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should succeed when revoking non-existent OTP", func(t *testing.T) {
-		err := os.RevokeOTP(context.Background(), 999)
+		err := os.RevokeOTP(context.Background(), "999")
 		require.NoError(t, err)
 	})
 
 	t.Run("Should succeed when revoking already revoked OTP", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		_, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -429,7 +427,7 @@ func TestRevokeOTP(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		_, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -438,7 +436,7 @@ func TestRevokeOTP(t *testing.T) {
 	})
 
 	t.Run("Should also reset attempts when revoking", func(t *testing.T) {
-		userID := 456
+		userID := "456"
 		_, err := os.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -468,8 +466,8 @@ func TestRevokeAllOTPs(t *testing.T) {
 	os := setupOTPService(t)
 
 	t.Run("Should revoke all OTPs for all users", func(t *testing.T) {
-		userID1 := 123
-		userID2 := 456
+		userID1 := "123"
+		userID2 := "456"
 
 		otp1, err := os.CreateOTP(context.Background(), userID1)
 		require.NoError(t, err)
@@ -491,8 +489,8 @@ func TestRevokeAllOTPs(t *testing.T) {
 	})
 
 	t.Run("Should also revoke all attempt counters", func(t *testing.T) {
-		userID1 := 789
-		userID2 := 321
+		userID1 := "789"
+		userID2 := "321"
 
 		// Create OTPs and make failed attempts
 		_, err := os.CreateOTP(context.Background(), userID1)
@@ -556,8 +554,8 @@ func TestOTPUniqueness(t *testing.T) {
 
 	t.Run("Should handle multiple users with OTPs", func(t *testing.T) {
 		// Create OTPs for multiple users
-		users := []int{100, 200, 300, 400, 500}
-		otps := make(map[int]string)
+		users := []string{"100", "200", "300", "400", "500"}
+		otps := make(map[string]string)
 
 		for _, userID := range users {
 			otp, err := os.CreateOTP(context.Background(), userID)
@@ -569,7 +567,7 @@ func TestOTPUniqueness(t *testing.T) {
 		for userID, otpValue := range otps {
 			valid, err := os.VerifyOTP(context.Background(), userID, otpValue)
 			require.NoError(t, err)
-			assert.True(t, valid, "OTP for user %d should be valid", userID)
+			assert.True(t, valid, "OTP for user %s should be valid", userID)
 		}
 	})
 
@@ -580,7 +578,7 @@ func TestOTPUniqueness(t *testing.T) {
 		otpSet := make(map[string]bool)
 
 		for i := 0; i < numOTPs; i++ {
-			otp, err := os.CreateOTP(context.Background(), 1000+i)
+			otp, err := os.CreateOTP(context.Background(), strconv.Itoa(1000+i))
 			require.NoError(t, err)
 
 			if otpSet[*otp] {
@@ -608,7 +606,7 @@ func TestOTPExpiration(t *testing.T) {
 		shortOS, err := service.NewOTPService(context.Background(), redisDB, shortConfig)
 		require.NoError(t, err)
 
-		userID := 777
+		userID := "777"
 		otp, err := shortOS.CreateOTP(context.Background(), userID)
 		require.NoError(t, err)
 

@@ -3,14 +3,14 @@ package service
 import (
 	"errors"
 
-	"github.com/bcetienne/tools-go-token/lib"
-	modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
+	"github.com/bcetienne/tools-go-token/v4/lib"
+	modelRefreshToken "github.com/bcetienne/tools-go-token/v4/model/refresh-token"
 
 	"log"
 	"testing"
 	"time"
 
-	"github.com/bcetienne/tools-go-token/service"
+	"github.com/bcetienne/tools-go-token/v4/service"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -38,9 +38,8 @@ func Test_Auth_AccessToken_CreateAccessToken_TableDriven(t *testing.T) {
 	}
 
 	user := modelRefreshToken.AuthUser{
-		UserID:   1,
-		UserUUID: "123-123-123",
-		Email:    "user@mail.com",
+		ID:    "1",
+		Email: "user@mail.com",
 	}
 	config := lib.Config{
 		Issuer:    "test_auth.com",
@@ -83,9 +82,8 @@ func Test_Auth_AccessToken_VerifyAccessToken_TableDriven(t *testing.T) {
 	}
 
 	user := modelRefreshToken.AuthUser{
-		UserID:   2,
-		UserUUID: "456-456-456",
-		Email:    "miss@mail.com",
+		ID:    "2",
+		Email: "miss@mail.com",
 	}
 	config := lib.Config{
 		Issuer:    "test_auth.com",
@@ -110,13 +108,13 @@ func Test_Auth_AccessToken_VerifyAccessToken_TableDriven(t *testing.T) {
 				if err != nil {
 					t.Fatalf("The test expect no error, got : %v", err)
 				}
-				if verified.UserID != user.UserID {
-					t.Fatalf("Ther user ID does not match. Expected %d, got %d", user.UserID, verified.UserID)
+				if verified.Subject != user.ID {
+					t.Fatalf("The user ID does not match. Expected %s, got %s", user.ID, verified.Subject)
+				}
+				if verified.Email != user.Email {
+					t.Fatalf("The email does not match. Expected %s, got %s", user.Email, verified.Email)
 				}
 				if verified.Issuer != config.Issuer {
-					if verified.Subject != user.Email {
-						t.Fatalf("The subject does not match. Expected %s, got %s", user.Email, verified.Subject)
-					}
 					t.Fatalf("The issuer does not match. Expected %s, got %s", config.Issuer, verified.Issuer)
 				}
 			}
@@ -129,9 +127,8 @@ func Test_Auth_AccessToken_VerifyAccessToken_Expired(t *testing.T) {
 	// But it should be with a specific error when the token is expired.
 	t.Run("Success - Expired token", func(t *testing.T) {
 		user := modelRefreshToken.AuthUser{
-			UserID:   3,
-			UserUUID: "789-789-789",
-			Email:    "mister@mail.com",
+			ID:    "3",
+			Email: "mister@mail.com",
 		}
 		config := lib.Config{
 			Issuer:    "test_auth.com",
@@ -164,14 +161,12 @@ func Test_Auth_AccessToken_VerifyAccessToken_Expired(t *testing.T) {
 func Test_Auth_AccessToken_VerifyAccessToken_TwoDifferentTokens(t *testing.T) {
 	t.Run("Success - Two different tokens", func(t *testing.T) {
 		user := modelRefreshToken.AuthUser{
-			UserID:   3,
-			UserUUID: "789-789-789",
-			Email:    "mister@mail.com",
+			ID:    "550e8400-e29b-41d4-a716-446655440000",
+			Email: "mister@mail.com",
 		}
 		secondUser := modelRefreshToken.AuthUser{
-			UserID:   4,
-			UserUUID: "000-000-000",
-			Email:    "lady@mail.com",
+			ID:    "4",
+			Email: "lady@mail.com",
 		}
 		config := lib.Config{
 			Issuer:    "test_auth.com",
