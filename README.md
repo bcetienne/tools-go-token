@@ -42,8 +42,32 @@ A comprehensive Go module providing secure authentication and token management f
 ## 🛠️ Installation
 
 ```bash
-go get github.com/bcetienne/tools-go-token/v3
+go get github.com/bcetienne/tools-go-token/v4
 ```
+
+### ⚠️ Version 4.0 Breaking Changes
+
+**User IDs are now strings** (was `int` in v3.x). This provides flexibility to support UUIDs, numeric IDs, or any unique identifier:
+
+```go
+// v3.x (old)
+user := NewAuthUser(123, "uuid", "email@example.com")
+token, _ := refreshService.CreateRefreshToken(ctx, 123)
+
+// v4.x (new) - Numeric ID as string
+user := NewAuthUser("123", "email@example.com")
+token, _ := refreshService.CreateRefreshToken(ctx, "123")
+
+// v4.x (new) - UUID
+user := NewAuthUser("550e8400-e29b-41d4-a716-446655440000", "email@example.com")
+token, _ := refreshService.CreateRefreshToken(ctx, "550e8400-e29b-41d4-a716-446655440000")
+```
+
+**JWT structure changed**: User ID moved to standard `Subject` claim (RFC 7519):
+- Access user ID via `claim.Subject` (was `claim.UserID`)
+- Email now in `claim.Email` custom claim (was in `Subject`)
+
+See [CHANGELOG.md](CHANGELOG.md) for complete migration guide.
 
 ### Dependencies
 
@@ -71,9 +95,9 @@ import (
     "context"
     "log"
 
-    "github.com/bcetienne/tools-go-token/v3/lib"
-    "github.com/bcetienne/tools-go-token/v3/service"
-    "github.com/bcetienne/tools-go-token/v3/validation"
+    "github.com/bcetienne/tools-go-token/v4/lib"
+    "github.com/bcetienne/tools-go-token/v4/service"
+    "github.com/bcetienne/tools-go-token/v4/validation"
     "github.com/redis/go-redis/v9"
 )
 
@@ -134,7 +158,7 @@ func main() {
 ### 2. Password validation
 
 ```go
-import "github.com/bcetienne/tools-go-token/v3/validation"
+import "github.com/bcetienne/tools-go-token/v4/validation"
 
 func validateUserPassword() {
     validator := validation.NewPasswordValidation()
@@ -158,19 +182,19 @@ func validateUserPassword() {
 ```go
 import (
     modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
-    "github.com/bcetienne/tools-go-token/v3/lib"
+    "github.com/bcetienne/tools-go-token/v4/lib"
 )
 
 func authenticationFlow() {
     // User data
-    user := modelRefreshToken.NewAuthUser(1, "user-uuid", "user@example.com")
+    user := modelRefreshToken.NewAuthUser("1", "user@example.com")  // or use UUID: "550e8400-..."
 
     // Hash password
     passwordHash := lib.NewPasswordHash()
     hashedPassword, _ := passwordHash.Hash("userPassword123!")
 
     // Create refresh token (returns *string)
-    refreshToken, _ := refreshTokenService.CreateRefreshToken(ctx, user.GetUserID())
+    refreshToken, _ := refreshTokenService.CreateRefreshToken(ctx, user.GetID())
 
     // Create access token
     accessToken, _ := accessTokenService.CreateAccessToken(user)
@@ -252,7 +276,7 @@ func loadConfig() *lib.Config {
 ### Email validation
 
 ```go
-import "github.com/bcetienne/tools-go-token/v3/validation"
+import "github.com/bcetienne/tools-go-token/v4/validation"
 
 func validateEmail() {
     emailValidator := validation.NewEmailValidation()
@@ -276,7 +300,7 @@ func validateEmail() {
 ### Password hashing & verification
 
 ```go
-import "github.com/bcetienne/tools-go-token/v3/lib"
+import "github.com/bcetienne/tools-go-token/v4/lib"
 
 func passwordExample() {
     hasher := lib.NewPasswordHash()
@@ -304,7 +328,7 @@ func passwordExample() {
 ```go
 func refreshTokenExample() {
     ctx := context.Background()
-    userID := 123
+    userID := "123"  // String ID - can be UUID or numeric
 
     // Create refresh token (user can have multiple active tokens)
     token, err := refreshTokenService.CreateRefreshToken(ctx, userID)
@@ -347,7 +371,7 @@ func refreshTokenExample() {
 
 ```go
 func accessTokenExample() {
-    user := modelRefreshToken.NewAuthUser(1, "uuid", "user@example.com")
+    user := modelRefreshToken.NewAuthUser("1", "user@example.com")
 
     // Create access token
     token, err := accessTokenService.CreateAccessToken(user)
@@ -367,7 +391,7 @@ func accessTokenExample() {
         return
     }
 
-    log.Printf("Token valid for user: %d", claims.UserID)
+    log.Printf("Token valid for user: %s", claims.Subject)  // User ID now in Subject claim
 }
 ```
 
@@ -376,7 +400,7 @@ func accessTokenExample() {
 ```go
 func passwordResetExample() {
     ctx := context.Background()
-    userID := 456
+    userID := "456"  // String ID
 
     // Create password reset token (invalidates previous token automatically)
     resetToken, err := passwordResetService.CreatePasswordResetToken(ctx, userID)
@@ -409,7 +433,7 @@ func passwordResetExample() {
 ```go
 func otpAuthenticationExample() {
     ctx := context.Background()
-    userID := 789
+    userID := "789"  // String ID
 
     // === STEP 1: User requests OTP ===
     // Create 6-digit OTP code (invalidates previous code automatically)
@@ -458,7 +482,7 @@ func otpAuthenticationExample() {
 // Additional OTP management functions
 func otpManagementExample() {
     ctx := context.Background()
-    userID := 789
+    userID := "789"  // String ID
 
     // Revoke a specific user's OTP (e.g., user requests new code)
     err := otpService.RevokeOTP(ctx, userID)
@@ -568,22 +592,22 @@ Secure: Codes are hashed with bcrypt before storage (cost factor 14).
 ### Token lifecycle
 
 **RefreshToken** (multi-token per user):
-1. **Create**: `CreateRefreshToken(ctx, userID)` → Returns `*string`
-2. **Verify**: `VerifyRefreshToken(ctx, userID, token)` → Checks if key exists
-3. **Revoke**: `RevokeRefreshToken(ctx, token, userID)` → Deletes specific token
+1. **Create**: `CreateRefreshToken(ctx, userID string)` → Returns `*string`
+2. **Verify**: `VerifyRefreshToken(ctx, userID string, token string)` → Checks if key exists
+3. **Revoke**: `RevokeRefreshToken(ctx, token string, userID string)` → Deletes specific token
 4. **RevokeAllUser**: Deletes all tokens for one user (password change)
 5. **RevokeAll**: Emergency revocation of ALL tokens (security breach)
 6. **Expiration**: Automatic via Redis TTL
 
 **PasswordReset** (single token per user):
-1. **Create**: `CreatePasswordResetToken(ctx, userID)` → Returns `*string`, invalidates previous
-2. **Verify**: `VerifyPasswordResetToken(ctx, userID, token)` → Retrieves and compares token
-3. **Revoke**: `RevokePasswordResetToken(ctx, userID, token)` → Verifies token before deletion (security)
+1. **Create**: `CreatePasswordResetToken(ctx, userID string)` → Returns `*string`, invalidates previous
+2. **Verify**: `VerifyPasswordResetToken(ctx, userID string, token string)` → Retrieves and compares token
+3. **Revoke**: `RevokePasswordResetToken(ctx, userID string, token string)` → Verifies token before deletion (security)
 4. **RevokeAll**: Emergency revocation of ALL reset tokens
 5. **Expiration**: Automatic via Redis TTL
 
 **OTP** (single code per user, rate-limited):
-1. **Create**: `CreateOTP(ctx, userID)` → Returns `*string` (6-digit code), invalidates previous, resets attempts
+1. **Create**: `CreateOTP(ctx, userID string)` → Returns `*string` (6-digit code), invalidates previous, resets attempts
 2. **Verify**: `VerifyOTP(ctx, userID, code)` → Checks bcrypt hash, enforces rate limit (5 attempts), auto-revokes on success
 3. **Revoke**: `RevokeOTP(ctx, userID)` → Deletes OTP and attempts counter
 4. **RevokeAll**: Emergency revocation of ALL OTPs

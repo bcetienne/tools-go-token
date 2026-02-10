@@ -1,4 +1,4 @@
-module github.com/bcetienne/tools-go-token/v3
+module github.com/bcetienne/tools-go-token/v4
 
 go 1.25.0
 

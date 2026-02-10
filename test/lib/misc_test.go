@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bcetienne/tools-go-token/lib"
+	"github.com/bcetienne/tools-go-token/v4/lib"
 )
 
 func Test_Lib_Misc_GenerateRandomString(t *testing.T) {

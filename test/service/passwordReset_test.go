@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcetienne/tools-go-token/lib"
-	"github.com/bcetienne/tools-go-token/service"
+	"github.com/bcetienne/tools-go-token/v4/lib"
+	"github.com/bcetienne/tools-go-token/v4/service"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,7 +52,7 @@ func TestCreatePasswordResetToken(t *testing.T) {
 	prs := setupPasswordResetService(t)
 
 	t.Run("Should create token successfully", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 
 		require.NoError(t, err)
@@ -62,24 +62,23 @@ func TestCreatePasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should fail with invalid user ID", func(t *testing.T) {
-		_, err := prs.CreatePasswordResetToken(context.Background(), 0)
+		_, err := prs.CreatePasswordResetToken(context.Background(), "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 
-		_, err = prs.CreatePasswordResetToken(context.Background(), -1)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		token, err := prs.CreatePasswordResetToken(nil, 123)
+		token, err := prs.CreatePasswordResetToken(nil, "123")
 		require.NoError(t, err)
 		assert.NotNil(t, token)
 		assert.NotEmpty(t, *token)
 	})
 
 	t.Run("Should replace existing token when creating new one for same user", func(t *testing.T) {
-		userID := 456
+		userID := "456"
 		token1, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -101,7 +100,7 @@ func TestCreatePasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should create token with correct length", func(t *testing.T) {
-		userID := 789
+		userID := "789"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 		assert.Equal(t, 32, len(*token), "Password reset token should be 32 characters")
@@ -112,7 +111,7 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 	prs := setupPasswordResetService(t)
 
 	t.Run("Should verify valid token", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -122,24 +121,23 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should return false for non-existent token", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		valid, err := prs.VerifyPasswordResetToken(context.Background(), userID, "abcdefghijklmnopqrstuvwxyz012345")
 		require.NoError(t, err)
 		assert.False(t, valid)
 	})
 
 	t.Run("Should fail with invalid user ID", func(t *testing.T) {
-		_, err := prs.VerifyPasswordResetToken(context.Background(), 0, "some-token")
+		_, err := prs.VerifyPasswordResetToken(context.Background(), "", "some-token")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 
-		_, err = prs.VerifyPasswordResetToken(context.Background(), -1, "some-token")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should fail with empty token", func(t *testing.T) {
-		_, err := prs.VerifyPasswordResetToken(context.Background(), 123, "")
+		_, err := prs.VerifyPasswordResetToken(context.Background(), "123", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty token")
 	})
@@ -150,13 +148,13 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 			longToken = longToken[:i] + "a" + longToken[i+1:]
 		}
 
-		_, err := prs.VerifyPasswordResetToken(context.Background(), 123, longToken)
+		_, err := prs.VerifyPasswordResetToken(context.Background(), "123", longToken)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "token too long")
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -166,7 +164,7 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should return false for revoked token", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -179,7 +177,7 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should return false for wrong token with correct user ID", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -195,12 +193,12 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should return false for wrong user ID", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
 		// Try to verify with different user ID
-		valid, err := prs.VerifyPasswordResetToken(context.Background(), 456, *token)
+		valid, err := prs.VerifyPasswordResetToken(context.Background(), "456", *token)
 		require.NoError(t, err)
 		assert.False(t, valid)
 	})
@@ -212,7 +210,7 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 		shortPrs, err := service.NewPasswordResetService(context.Background(), redisDB, shortConfig)
 		require.NoError(t, err)
 
-		userID := 789
+		userID := "789"
 		token, err := shortPrs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -230,7 +228,7 @@ func TestRevokePasswordResetToken(t *testing.T) {
 	prs := setupPasswordResetService(t)
 
 	t.Run("Should revoke token successfully", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -243,17 +241,16 @@ func TestRevokePasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should fail with invalid user ID", func(t *testing.T) {
-		err := prs.RevokePasswordResetToken(context.Background(), 0, "some-token")
+		err := prs.RevokePasswordResetToken(context.Background(), "", "some-token")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 
-		err = prs.RevokePasswordResetToken(context.Background(), -1, "some-token")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid user id")
 	})
 
 	t.Run("Should fail with empty token", func(t *testing.T) {
-		err := prs.RevokePasswordResetToken(context.Background(), 123, "")
+		err := prs.RevokePasswordResetToken(context.Background(), "123", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty token")
 	})
@@ -264,19 +261,19 @@ func TestRevokePasswordResetToken(t *testing.T) {
 			longToken = longToken[:i] + "a" + longToken[i+1:]
 		}
 
-		err := prs.RevokePasswordResetToken(context.Background(), 123, longToken)
+		err := prs.RevokePasswordResetToken(context.Background(), "123", longToken)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "token too long")
 	})
 
 	t.Run("Should fail with non-existent token", func(t *testing.T) {
-		err := prs.RevokePasswordResetToken(context.Background(), 123, "abcdefghijklmnopqrstuvwxyz012345")
+		err := prs.RevokePasswordResetToken(context.Background(), "123", "abcdefghijklmnopqrstuvwxyz012345")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "token not found or already revoked")
 	})
 
 	t.Run("Should fail with wrong token for user", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -292,7 +289,7 @@ func TestRevokePasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should fail when revoking already revoked token", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -307,7 +304,7 @@ func TestRevokePasswordResetToken(t *testing.T) {
 	})
 
 	t.Run("Should handle nil context", func(t *testing.T) {
-		userID := 123
+		userID := "123"
 		token, err := prs.CreatePasswordResetToken(context.Background(), userID)
 		require.NoError(t, err)
 
@@ -320,8 +317,8 @@ func TestRevokeAllPasswordResetTokens(t *testing.T) {
 	prs := setupPasswordResetService(t)
 
 	t.Run("Should revoke all tokens for all users", func(t *testing.T) {
-		userID1 := 123
-		userID2 := 456
+		userID1 := "123"
+		userID2 := "456"
 
 		token1, err := prs.CreatePasswordResetToken(context.Background(), userID1)
 		require.NoError(t, err)
@@ -360,7 +357,7 @@ func TestPasswordResetInvalidConfig(t *testing.T) {
 		prs, err := service.NewPasswordResetService(context.Background(), redisDB, invalidConfig)
 		require.NoError(t, err)
 
-		_, err = prs.CreatePasswordResetToken(context.Background(), 123)
+		_, err = prs.CreatePasswordResetToken(context.Background(), "123")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "time: invalid duration")
 	})
@@ -371,8 +368,8 @@ func TestPasswordResetTokenUniqueness(t *testing.T) {
 
 	t.Run("Should handle multiple users with tokens", func(t *testing.T) {
 		// Create tokens for multiple users
-		users := []int{100, 200, 300, 400, 500}
-		tokens := make(map[int]string) // Map user ID to token value
+		users := []string{"100", "200", "300", "400", "500"}
+		tokens := make(map[string]string) // Map user ID to token value
 
 		for _, userID := range users {
 			token, err := prs.CreatePasswordResetToken(context.Background(), userID)
@@ -402,7 +399,7 @@ func TestPasswordResetConcurrentOperations(t *testing.T) {
 	prs := setupPasswordResetService(t)
 
 	t.Run("Should handle concurrent token creation for same user", func(t *testing.T) {
-		userID := 999
+		userID := "999"
 		numOperations := 10
 		errChan := make(chan error, numOperations)
 		tokenChan := make(chan string, numOperations)

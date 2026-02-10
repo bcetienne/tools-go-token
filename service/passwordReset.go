@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bcetienne/tools-go-token/lib"
-	"github.com/bcetienne/tools-go-token/validation"
+	"github.com/bcetienne/tools-go-token/v4/lib"
+	"github.com/bcetienne/tools-go-token/v4/validation"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -92,7 +92,7 @@ func NewPasswordResetService(ctx context.Context, db *redis.Client, config *lib.
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //
 // Returns:
 //   - *string: Pointer to the generated reset token (32 characters)
@@ -100,14 +100,14 @@ func NewPasswordResetService(ctx context.Context, db *redis.Client, config *lib.
 //
 // Example:
 //
-//	token, err := resetService.CreatePasswordResetToken(ctx, 123)
+//	token, err := resetService.CreatePasswordResetToken(ctx, "550e8400-e29b-41d4-a716-446655440000")
 //	if err != nil {
 //	    return err
 //	}
 //	// Send token via email: "Reset link: /reset?token=abc123..."
 //	sendResetEmail(userEmail, *token)
-func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, userID int) (*string, error) {
-	if userID <= 0 {
+func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, userID string) (*string, error) {
+	if userID == "" {
 		return nil, errors.New("invalid user id")
 	}
 
@@ -128,7 +128,7 @@ func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, u
 	}
 
 	// Add the token to Redis
-	if err := prs.db.Set(ctx, fmt.Sprintf("%s:%d", redisStoreNamePasswordReset, userID), token, duration).Err(); err != nil {
+	if err := prs.db.Set(ctx, fmt.Sprintf("%s:%s", redisStoreNamePasswordReset, userID), token, duration).Err(); err != nil {
 		return nil, err
 	}
 
@@ -139,14 +139,14 @@ func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, u
 // Validates token format and compares with stored token value in Redis.
 //
 // Verification process:
-//  1. Validate userID > 0
+//  1. Validate userID is not empty
 //  2. Validate token format (length, non-empty)
 //  3. Retrieve stored token from Redis
 //  4. Compare provided token with stored token (exact match)
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //   - token: The reset token to verify (32 characters)
 //
 // Returns:
@@ -155,7 +155,7 @@ func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, u
 //
 // Example:
 //
-//	valid, err := resetService.VerifyPasswordResetToken(ctx, 123, tokenFromURL)
+//	valid, err := resetService.VerifyPasswordResetToken(ctx, "550e8400-e29b-41d4-a716-446655440000", tokenFromURL)
 //	if err != nil {
 //	    return err
 //	}
@@ -163,8 +163,8 @@ func (prs *PasswordResetService) CreatePasswordResetToken(ctx context.Context, u
 //	    return errors.New("invalid or expired reset token")
 //	}
 //	// Token valid - allow user to set new password
-func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, userID int, token string) (bool, error) {
-	if userID <= 0 {
+func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, userID string, token string) (bool, error) {
+	if userID == "" {
 		return false, errors.New("invalid user id")
 	}
 
@@ -176,7 +176,7 @@ func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, u
 		ctx = context.Background()
 	}
 
-	val, err := prs.db.Get(ctx, fmt.Sprintf("%s:%d", redisStoreNamePasswordReset, userID)).Result()
+	val, err := prs.db.Get(ctx, fmt.Sprintf("%s:%s", redisStoreNamePasswordReset, userID)).Result()
 	if errors.Is(err, redis.Nil) {
 		return false, nil // Token doesn't exist or expired - not an error
 	}
@@ -200,7 +200,7 @@ func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, u
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //   - token: The reset token to revoke (must match stored token)
 //
 // Returns:
@@ -209,12 +209,12 @@ func (prs *PasswordResetService) VerifyPasswordResetToken(ctx context.Context, u
 // Example:
 //
 //	// After successful password change
-//	err := resetService.RevokePasswordResetToken(ctx, 123, tokenFromURL)
+//	err := resetService.RevokePasswordResetToken(ctx, "550e8400-e29b-41d4-a716-446655440000", tokenFromURL)
 //	if err != nil {
 //	    log.Printf("Failed to revoke reset token: %v", err)
 //	}
-func (prs *PasswordResetService) RevokePasswordResetToken(ctx context.Context, userID int, token string) error {
-	if userID <= 0 {
+func (prs *PasswordResetService) RevokePasswordResetToken(ctx context.Context, userID string, token string) error {
+	if userID == "" {
 		return errors.New("invalid user id")
 	}
 
@@ -227,7 +227,7 @@ func (prs *PasswordResetService) RevokePasswordResetToken(ctx context.Context, u
 	}
 
 	// Get the stored token to verify it matches before revoking
-	key := fmt.Sprintf("%s:%d", redisStoreNamePasswordReset, userID)
+	key := fmt.Sprintf("%s:%s", redisStoreNamePasswordReset, userID)
 	storedToken, err := prs.db.Get(ctx, key).Result()
 	if errors.Is(err, redis.Nil) {
 		return errors.New("token not found or already revoked")

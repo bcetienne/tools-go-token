@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bcetienne/tools-go-token/lib"
-	modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
+	"github.com/bcetienne/tools-go-token/v4/lib"
+	modelRefreshToken "github.com/bcetienne/tools-go-token/v4/model/refresh-token"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -51,19 +51,19 @@ func NewAccessTokenService(config *lib.Config) *AccessTokenService {
 }
 
 // CreateAccessToken generates a new JWT access token for an authenticated user.
-// The token is signed with HS256 and includes standard JWT claims plus custom UserID.
+// The token is signed with HS256 and includes standard JWT claims plus custom email field.
 //
-// Token structure:
+// Token structure (RFC 7519 compliant):
 //   - KeyType: "access" (distinguishes from other token types)
-//   - UserID: User's numeric identifier
-//   - Subject: User's email address
+//   - Email: User's email address (custom claim)
+//   - Subject: User's unique identifier (UUID or numeric ID as string) - standard claim
 //   - Issuer: Configured application issuer
 //   - ExpiresAt: Current time + configured JWTExpiry
 //   - IssuedAt/NotBefore: Current time
 //   - ID (jti): Random UUID for token uniqueness
 //
 // Parameters:
-//   - user: Authenticated user containing UserID, Email, and UUID
+//   - user: Authenticated user containing ID and Email
 //
 // Returns:
 //   - string: Signed JWT token (format: header.payload.signature)
@@ -71,7 +71,7 @@ func NewAccessTokenService(config *lib.Config) *AccessTokenService {
 //
 // Example:
 //
-//	user := modelRefreshToken.NewAuthUser(123, "uuid-here", "user@example.com")
+//	user := modelRefreshToken.NewAuthUser("550e8400-e29b-41d4-a716-446655440000", "user@example.com")
 //	token, err := accessService.CreateAccessToken(user)
 //	if err != nil {
 //	    return err
@@ -85,13 +85,13 @@ func (at *AccessTokenService) CreateAccessToken(user *modelRefreshToken.AuthUser
 
 	claim := modelRefreshToken.Claim{
 		KeyType: "access",
-		UserID:  user.UserID,
+		Email:   user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    at.config.Issuer,
-			Subject:   user.Email,
+			Subject:   user.ID,
 			ID:        uuid.New().String(),
 		},
 	}
@@ -110,7 +110,7 @@ func (at *AccessTokenService) CreateAccessToken(user *modelRefreshToken.AuthUser
 //
 // Special handling:
 //   - If token is expired (jwt.ErrTokenExpired), claims are still returned
-//     along with the error, allowing the caller to extract UserID for
+//     along with the error, allowing the caller to extract Subject (user ID) for
 //     refresh token verification
 //
 // Parameters:
@@ -127,12 +127,12 @@ func (at *AccessTokenService) CreateAccessToken(user *modelRefreshToken.AuthUser
 //	if err != nil {
 //	    if errors.Is(err, jwt.ErrTokenExpired) {
 //	        // Token expired - user can refresh using refresh token
-//	        return handleTokenRefresh(claim.UserID)
+//	        return handleTokenRefresh(claim.Subject)
 //	    }
 //	    return errors.New("invalid token")
 //	}
 //	// Token valid - proceed with authenticated request
-//	userID := claim.UserID
+//	userID := claim.Subject
 func (at *AccessTokenService) VerifyAccessToken(token string) (*modelRefreshToken.Claim, error) {
 	t, err := jwt.ParseWithClaims(token, &modelRefreshToken.Claim{}, func(token *jwt.Token) (any, error) {
 		return []byte(at.config.JWTSecret), nil

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/bcetienne/tools-go-token/lib"
-	"github.com/bcetienne/tools-go-token/validation"
+	"github.com/bcetienne/tools-go-token/v4/lib"
+	"github.com/bcetienne/tools-go-token/v4/validation"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -41,9 +41,9 @@ type OTPService struct {
 
 // OTPServiceInterface defines the methods for OTP management.
 type OTPServiceInterface interface {
-	CreateOTP(ctx context.Context, userID int) (*string, error)
-	VerifyOTP(ctx context.Context, userID int, otp string) (bool, error)
-	RevokeOTP(ctx context.Context, userID int) error
+	CreateOTP(ctx context.Context, userID string) (*string, error)
+	VerifyOTP(ctx context.Context, userID string, otp string) (bool, error)
+	RevokeOTP(ctx context.Context, userID string) error
 	RevokeAllOTPs(ctx context.Context) error
 }
 
@@ -110,7 +110,7 @@ func NewOTPService(ctx context.Context, db *redis.Client, config *lib.Config) (*
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //
 // Returns:
 //   - *string: Pointer to the generated 6-digit OTP code (plaintext for sending via email/SMS)
@@ -118,14 +118,14 @@ func NewOTPService(ctx context.Context, db *redis.Client, config *lib.Config) (*
 //
 // Example:
 //
-//	otp, err := otpService.CreateOTP(ctx, 123)
+//	otp, err := otpService.CreateOTP(ctx, "550e8400-e29b-41d4-a716-446655440000")
 //	if err != nil {
 //	    return err
 //	}
 //	// Send *otp to user via email: "Your code is: 387492"
 //	sendEmail(userEmail, *otp)
-func (otps *OTPService) CreateOTP(ctx context.Context, userID int) (*string, error) {
-	if userID <= 0 {
+func (otps *OTPService) CreateOTP(ctx context.Context, userID string) (*string, error) {
+	if userID == "" {
 		return nil, errors.New("invalid user id")
 	}
 
@@ -133,7 +133,7 @@ func (otps *OTPService) CreateOTP(ctx context.Context, userID int) (*string, err
 		ctx = context.Background()
 	}
 
-	key := fmt.Sprintf("%s:%d", redisStoreNameOTP, userID)
+	key := fmt.Sprintf("%s:%s", redisStoreNameOTP, userID)
 
 	otp, err := lib.GenerateOTP()
 	if err != nil {
@@ -181,7 +181,7 @@ func (otps *OTPService) CreateOTP(ctx context.Context, userID int) (*string, err
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //   - otp: The OTP code to verify (must be 6 digits)
 //
 // Returns:
@@ -190,7 +190,7 @@ func (otps *OTPService) CreateOTP(ctx context.Context, userID int) (*string, err
 //
 // Example:
 //
-//	valid, err := otpService.VerifyOTP(ctx, 123, "387492")
+//	valid, err := otpService.VerifyOTP(ctx, "550e8400-e29b-41d4-a716-446655440000", "387492")
 //	if err != nil {
 //	    if strings.Contains(err.Error(), "max attempts exceeded") {
 //	        return errors.New("too many attempts, request new code")
@@ -201,8 +201,8 @@ func (otps *OTPService) CreateOTP(ctx context.Context, userID int) (*string, err
 //	    return errors.New("invalid or expired OTP")
 //	}
 //	// OTP verified, proceed with authentication
-func (otps *OTPService) VerifyOTP(ctx context.Context, userID int, otp string) (bool, error) {
-	if userID <= 0 {
+func (otps *OTPService) VerifyOTP(ctx context.Context, userID string, otp string) (bool, error) {
+	if userID == "" {
 		return false, errors.New("invalid user id")
 	}
 	if ctx == nil {
@@ -229,7 +229,7 @@ func (otps *OTPService) VerifyOTP(ctx context.Context, userID int, otp string) (
 		}
 	}
 
-	val, err := otps.db.Get(ctx, fmt.Sprintf("%s:%d", redisStoreNameOTP, userID)).Result()
+	val, err := otps.db.Get(ctx, fmt.Sprintf("%s:%s", redisStoreNameOTP, userID)).Result()
 	if errors.Is(err, redis.Nil) {
 		// OTP not found - increment attempts (best effort, ignore error)
 		_, _ = otps.incrementAttempts(ctx, userID)
@@ -263,26 +263,26 @@ func (otps *OTPService) VerifyOTP(ctx context.Context, userID int, otp string) (
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //
 // Returns:
 //   - error: Validation or storage errors
 //
 // Example:
 //
-//	err := otpService.RevokeOTP(ctx, 123)
+//	err := otpService.RevokeOTP(ctx, "550e8400-e29b-41d4-a716-446655440000")
 //	if err != nil {
 //	    log.Printf("Failed to revoke OTP: %v", err)
 //	}
-func (otps *OTPService) RevokeOTP(ctx context.Context, userID int) error {
-	if userID <= 0 {
+func (otps *OTPService) RevokeOTP(ctx context.Context, userID string) error {
+	if userID == "" {
 		return errors.New("invalid user id")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	err := otps.db.Del(ctx, fmt.Sprintf("%s:%d", redisStoreNameOTP, userID)).Err()
+	err := otps.db.Del(ctx, fmt.Sprintf("%s:%s", redisStoreNameOTP, userID)).Err()
 	if err != nil {
 		return err
 	}
@@ -335,15 +335,15 @@ func (otps *OTPService) RevokeAllOTPs(ctx context.Context) error {
 	return keys.Err()
 }
 
-func (otps *OTPService) getAttempts(ctx context.Context, userID int) (string, error) {
-	if userID <= 0 {
+func (otps *OTPService) getAttempts(ctx context.Context, userID string) (string, error) {
+	if userID == "" {
 		return "", errors.New("invalid user id")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	val, err := otps.db.Get(ctx, fmt.Sprintf("%s:%d", redisStoreNameOTPAttempts, userID)).Result()
+	val, err := otps.db.Get(ctx, fmt.Sprintf("%s:%s", redisStoreNameOTPAttempts, userID)).Result()
 	if errors.Is(err, redis.Nil) {
 		return "", nil
 	}
@@ -354,8 +354,8 @@ func (otps *OTPService) getAttempts(ctx context.Context, userID int) (string, er
 	return val, nil
 }
 
-func (otps *OTPService) incrementAttempts(ctx context.Context, userID int) (int, error) {
-	if userID <= 0 {
+func (otps *OTPService) incrementAttempts(ctx context.Context, userID string) (int, error) {
+	if userID == "" {
 		return 0, errors.New("invalid user id")
 	}
 
@@ -363,7 +363,7 @@ func (otps *OTPService) incrementAttempts(ctx context.Context, userID int) (int,
 		ctx = context.Background()
 	}
 
-	key := fmt.Sprintf("%s:%d", redisStoreNameOTPAttempts, userID)
+	key := fmt.Sprintf("%s:%s", redisStoreNameOTPAttempts, userID)
 
 	// Check if key exists to avoid race condition between INCR and EXPIRE
 	exists, err := otps.db.Exists(ctx, key).Result()
@@ -389,8 +389,8 @@ func (otps *OTPService) incrementAttempts(ctx context.Context, userID int) (int,
 	return int(newAttempts), nil
 }
 
-func (otps *OTPService) revokeAttempts(ctx context.Context, userID int) error {
-	if userID <= 0 {
+func (otps *OTPService) revokeAttempts(ctx context.Context, userID string) error {
+	if userID == "" {
 		return errors.New("invalid user id")
 	}
 
@@ -398,7 +398,7 @@ func (otps *OTPService) revokeAttempts(ctx context.Context, userID int) error {
 		ctx = context.Background()
 	}
 
-	return otps.db.Del(ctx, fmt.Sprintf("%s:%d", redisStoreNameOTPAttempts, userID)).Err()
+	return otps.db.Del(ctx, fmt.Sprintf("%s:%s", redisStoreNameOTPAttempts, userID)).Err()
 }
 
 func (otps *OTPService) revokeAllAttempts(ctx context.Context) error {
@@ -417,8 +417,8 @@ func (otps *OTPService) revokeAllAttempts(ctx context.Context) error {
 	return keys.Err()
 }
 
-func (otps *OTPService) resetAttempts(ctx context.Context, userID int) error {
-	if userID <= 0 {
+func (otps *OTPService) resetAttempts(ctx context.Context, userID string) error {
+	if userID == "" {
 		return errors.New("invalid user id")
 	}
 
@@ -426,5 +426,5 @@ func (otps *OTPService) resetAttempts(ctx context.Context, userID int) error {
 		ctx = context.Background()
 	}
 
-	return otps.db.Set(ctx, fmt.Sprintf("%s:%d", redisStoreNameOTPAttempts, userID), 0, otps.duration).Err()
+	return otps.db.Set(ctx, fmt.Sprintf("%s:%s", redisStoreNameOTPAttempts, userID), 0, otps.duration).Err()
 }

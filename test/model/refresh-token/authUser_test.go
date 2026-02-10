@@ -3,29 +3,24 @@ package refresh_token
 import (
 	"testing"
 
-	modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
+	modelRefreshToken "github.com/bcetienne/tools-go-token/v4/model/refresh-token"
 )
 
 func Test_NewAuthUser_Success(t *testing.T) {
 	// Arrange
-	userID := 123
-	uuid := "550e8400-e29b-41d4-a716-446655440000"
+	id := "550e8400-e29b-41d4-a716-446655440000"
 	email := "test@example.com"
 
 	// Act
-	authUser := modelRefreshToken.NewAuthUser(userID, uuid, email)
+	authUser := modelRefreshToken.NewAuthUser(id, email)
 
 	// Assert
 	if authUser == nil {
 		t.Fatal("NewAuthUser should return a non-nil AuthUser")
 	}
 
-	if authUser.UserID != userID {
-		t.Fatalf("Expected UserID to be %d, got %d", userID, authUser.UserID)
-	}
-
-	if authUser.UserUUID != uuid {
-		t.Fatalf("Expected UserUUID to be %s, got %s", uuid, authUser.UserUUID)
+	if authUser.ID != id {
+		t.Fatalf("Expected ID to be %s, got %s", id, authUser.ID)
 	}
 
 	if authUser.Email != email {
@@ -33,38 +28,24 @@ func Test_NewAuthUser_Success(t *testing.T) {
 	}
 }
 
-func Test_AuthUser_GetUserID(t *testing.T) {
+func Test_AuthUser_GetID(t *testing.T) {
 	// Arrange
-	expectedUserID := 456
-	authUser := modelRefreshToken.NewAuthUser(expectedUserID, "test-uuid", "test@example.com")
+	expectedID := "456"
+	authUser := modelRefreshToken.NewAuthUser(expectedID, "test@example.com")
 
 	// Act
-	userID := authUser.GetUserID()
+	id := authUser.GetID()
 
 	// Assert
-	if userID != expectedUserID {
-		t.Fatalf("Expected GetUserID() to return %d, got %d", expectedUserID, userID)
-	}
-}
-
-func Test_AuthUser_GetUserUUID(t *testing.T) {
-	// Arrange
-	expectedUUID := "123e4567-e89b-12d3-a456-426614174000"
-	authUser := modelRefreshToken.NewAuthUser(123, expectedUUID, "test@example.com")
-
-	// Act
-	uuid := authUser.GetUserUUID()
-
-	// Assert
-	if uuid != expectedUUID {
-		t.Fatalf("Expected GetUserUUID() to return %s, got %s", expectedUUID, uuid)
+	if id != expectedID {
+		t.Fatalf("Expected GetID() to return %s, got %s", expectedID, id)
 	}
 }
 
 func Test_AuthUser_GetEmail(t *testing.T) {
 	// Arrange
 	expectedEmail := "user@domain.com"
-	authUser := modelRefreshToken.NewAuthUser(123, "test-uuid", expectedEmail)
+	authUser := modelRefreshToken.NewAuthUser("123", expectedEmail)
 
 	// Act
 	email := authUser.GetEmail()
@@ -77,18 +58,14 @@ func Test_AuthUser_GetEmail(t *testing.T) {
 
 func Test_AuthUser_Interface_Compliance(t *testing.T) {
 	// Arrange
-	authUser := modelRefreshToken.NewAuthUser(789, "interface-test-uuid", "interface@test.com")
+	authUser := modelRefreshToken.NewAuthUser("789", "interface@test.com")
 
 	// Act & Assert - Test que AuthUser implémente AuthUserInterface
 	var _ modelRefreshToken.AuthUserInterface = authUser
 
 	// Test toutes les méthodes de l'interface
-	if authUser.GetUserID() != 789 {
-		t.Error("GetUserID() should return the correct user ID")
-	}
-
-	if authUser.GetUserUUID() != "interface-test-uuid" {
-		t.Error("GetUserUUID() should return the correct UUID")
+	if authUser.GetID() != "789" {
+		t.Error("GetID() should return the correct user ID")
 	}
 
 	if authUser.GetEmail() != "interface@test.com" {
@@ -99,64 +76,62 @@ func Test_AuthUser_Interface_Compliance(t *testing.T) {
 func Test_AuthUser_TableDriven(t *testing.T) {
 	tests := []struct {
 		name     string
-		userID   int
-		uuid     string
+		id       string
 		email    string
 		expected modelRefreshToken.AuthUser
 	}{
 		{
-			name:   "Standard user",
-			userID: 1,
-			uuid:   "550e8400-e29b-41d4-a716-446655440000",
-			email:  "john.doe@example.com",
+			name:  "Standard user with UUID",
+			id:    "550e8400-e29b-41d4-a716-446655440000",
+			email: "john.doe@example.com",
 			expected: modelRefreshToken.AuthUser{
-				UserID:   1,
-				UserUUID: "550e8400-e29b-41d4-a716-446655440000",
-				Email:    "john.doe@example.com",
+				ID:    "550e8400-e29b-41d4-a716-446655440000",
+				Email: "john.doe@example.com",
 			},
 		},
 		{
-			name:   "User with zero ID",
-			userID: 0,
-			uuid:   "00000000-0000-0000-0000-000000000000",
-			email:  "zero@example.com",
+			name:  "User with numeric ID",
+			id:    "123",
+			email: "numeric@example.com",
 			expected: modelRefreshToken.AuthUser{
-				UserID:   0,
-				UserUUID: "00000000-0000-0000-0000-000000000000",
-				Email:    "zero@example.com",
+				ID:    "123",
+				Email: "numeric@example.com",
 			},
 		},
 		{
-			name:   "User with negative ID",
-			userID: -1,
-			uuid:   "negative-uuid",
-			email:  "negative@example.com",
+			name:  "User with zero ID",
+			id:    "0",
+			email: "zero@example.com",
 			expected: modelRefreshToken.AuthUser{
-				UserID:   -1,
-				UserUUID: "negative-uuid",
-				Email:    "negative@example.com",
+				ID:    "0",
+				Email: "zero@example.com",
 			},
 		},
 		{
-			name:   "User with empty strings",
-			userID: 999,
-			uuid:   "",
-			email:  "",
+			name:  "User with empty strings",
+			id:    "",
+			email: "",
 			expected: modelRefreshToken.AuthUser{
-				UserID:   999,
-				UserUUID: "",
-				Email:    "",
+				ID:    "",
+				Email: "",
 			},
 		},
 		{
-			name:   "User with special characters",
-			userID: 123,
-			uuid:   "special-chars-!@#$%",
-			email:  "test+special@example-domain.co.uk",
+			name:  "User with special characters",
+			id:    "special-chars-!@#$%",
+			email: "test+special@example-domain.co.uk",
 			expected: modelRefreshToken.AuthUser{
-				UserID:   123,
-				UserUUID: "special-chars-!@#$%",
-				Email:    "test+special@example-domain.co.uk",
+				ID:    "special-chars-!@#$%",
+				Email: "test+special@example-domain.co.uk",
+			},
+		},
+		{
+			name:  "User with alphanumeric ID",
+			id:    "user-abc123-xyz789",
+			email: "alphanumeric@example.com",
+			expected: modelRefreshToken.AuthUser{
+				ID:    "user-abc123-xyz789",
+				Email: "alphanumeric@example.com",
 			},
 		},
 	}
@@ -164,15 +139,11 @@ func Test_AuthUser_TableDriven(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Act
-			authUser := modelRefreshToken.NewAuthUser(tt.userID, tt.uuid, tt.email)
+			authUser := modelRefreshToken.NewAuthUser(tt.id, tt.email)
 
 			// Assert
-			if authUser.UserID != tt.expected.UserID {
-				t.Fatalf("Expected UserID to be %d, got %d", tt.expected.UserID, authUser.UserID)
-			}
-
-			if authUser.UserUUID != tt.expected.UserUUID {
-				t.Fatalf("Expected UserUUID to be %q, got %q", tt.expected.UserUUID, authUser.UserUUID)
+			if authUser.ID != tt.expected.ID {
+				t.Fatalf("Expected ID to be %q, got %q", tt.expected.ID, authUser.ID)
 			}
 
 			if authUser.Email != tt.expected.Email {
@@ -180,12 +151,8 @@ func Test_AuthUser_TableDriven(t *testing.T) {
 			}
 
 			// Test les getters aussi
-			if authUser.GetUserID() != tt.expected.UserID {
-				t.Fatalf("Expected GetUserID() to return %d, got %d", tt.expected.UserID, authUser.GetUserID())
-			}
-
-			if authUser.GetUserUUID() != tt.expected.UserUUID {
-				t.Fatalf("Expected GetUserUUID() to return %q, got %q", tt.expected.UserUUID, authUser.GetUserUUID())
+			if authUser.GetID() != tt.expected.ID {
+				t.Fatalf("Expected GetID() to return %q, got %q", tt.expected.ID, authUser.GetID())
 			}
 
 			if authUser.GetEmail() != tt.expected.Email {
@@ -198,18 +165,13 @@ func Test_AuthUser_TableDriven(t *testing.T) {
 func Test_AuthUser_StructFields_DirectAccess(t *testing.T) {
 	// Test que les champs de la structure sont accessibles directement
 	authUser := &modelRefreshToken.AuthUser{
-		UserID:   42,
-		UserUUID: "direct-access-uuid",
-		Email:    "direct@access.com",
+		ID:    "direct-access-id",
+		Email: "direct@access.com",
 	}
 
 	// Test accès direct aux champs
-	if authUser.UserID != 42 {
-		t.Error("UserID field should be directly accessible")
-	}
-
-	if authUser.UserUUID != "direct-access-uuid" {
-		t.Error("UserUUID field should be directly accessible")
+	if authUser.ID != "direct-access-id" {
+		t.Error("ID field should be directly accessible")
 	}
 
 	if authUser.Email != "direct@access.com" {
@@ -219,20 +181,15 @@ func Test_AuthUser_StructFields_DirectAccess(t *testing.T) {
 
 func Test_AuthUser_Modification_AfterCreation(t *testing.T) {
 	// Test que les champs peuvent être modifiés après création
-	authUser := modelRefreshToken.NewAuthUser(1, "original", "original@test.com")
+	authUser := modelRefreshToken.NewAuthUser("original-id", "original@test.com")
 
 	// Modifier les valeurs
-	authUser.UserID = 999
-	authUser.UserUUID = "modified-uuid"
+	authUser.ID = "modified-id"
 	authUser.Email = "modified@test.com"
 
 	// Vérifier les modifications via les getters
-	if authUser.GetUserID() != 999 {
-		t.Error("UserID should be modifiable")
-	}
-
-	if authUser.GetUserUUID() != "modified-uuid" {
-		t.Error("UserUUID should be modifiable")
+	if authUser.GetID() != "modified-id" {
+		t.Error("ID should be modifiable")
 	}
 
 	if authUser.GetEmail() != "modified@test.com" {
@@ -243,16 +200,16 @@ func Test_AuthUser_Modification_AfterCreation(t *testing.T) {
 func Test_AuthUser_JSONTags(t *testing.T) {
 	// Test conceptuel - vérifie que la structure a les bons tags JSON
 	// (en pratique, vous testeriez cela avec du marshalling/unmarshalling JSON réel)
-	authUser := modelRefreshToken.NewAuthUser(123, "json-test", "json@test.com")
+	authUser := modelRefreshToken.NewAuthUser("json-test-id", "json@test.com")
 
 	// Vérifier que la structure peut être utilisée pour JSON
 	if authUser == nil {
 		t.Fatal("AuthUser should be suitable for JSON serialization")
 	}
 
-	// Les tags JSON sont: user_id, user_uuid, email
+	// Les tags JSON sont: id, email
 	// Ce test vérifie juste que la structure est bien formée
-	if authUser.UserID == 0 && authUser.UserUUID == "" && authUser.Email == "" {
+	if authUser.ID == "" && authUser.Email == "" {
 		t.Error("AuthUser structure should have proper JSON tag mapping")
 	}
 }

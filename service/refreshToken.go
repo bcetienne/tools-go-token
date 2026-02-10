@@ -7,10 +7,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/bcetienne/tools-go-token/lib"
+	"github.com/bcetienne/tools-go-token/v4/lib"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/bcetienne/tools-go-token/validation"
+	"github.com/bcetienne/tools-go-token/v4/validation"
 )
 
 const (
@@ -94,7 +94,7 @@ func NewRefreshTokenService(ctx context.Context, db *redis.Client, config *lib.C
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //
 // Returns:
 //   - *string: Pointer to the generated refresh token (255 characters)
@@ -102,14 +102,14 @@ func NewRefreshTokenService(ctx context.Context, db *redis.Client, config *lib.C
 //
 // Example:
 //
-//	token, err := refreshService.CreateRefreshToken(ctx, 123)
+//	token, err := refreshService.CreateRefreshToken(ctx, "550e8400-e29b-41d4-a716-446655440000")
 //	if err != nil {
 //	    return err
 //	}
 //	// Send token to client (store securely, httpOnly cookie recommended)
 //	setRefreshTokenCookie(w, *token)
-func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID int) (*string, error) {
-	if userID <= 0 {
+func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID string) (*string, error) {
+	if userID == "" {
 		return nil, errors.New("invalid user id")
 	}
 
@@ -130,7 +130,7 @@ func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID i
 	}
 
 	// Add the token to Redis
-	if err := rts.db.Set(ctx, fmt.Sprintf("%s:%d:%s", redisStoreNameRefreshToken, userID, token), "1", duration).Err(); err != nil {
+	if err := rts.db.Set(ctx, fmt.Sprintf("%s:%s:%s", redisStoreNameRefreshToken, userID, token), "1", duration).Err(); err != nil {
 		return nil, err
 	}
 
@@ -141,13 +141,13 @@ func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID i
 // Validates token format and checks existence in Redis.
 //
 // Verification process:
-//  1. Validate userID > 0
+//  1. Validate userID is not empty
 //  2. Validate token format (length, non-empty)
 //  3. Check Redis key "refresh:{userID}:{token}" exists
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //   - token: The refresh token to verify (255 characters)
 //
 // Returns:
@@ -156,7 +156,7 @@ func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID i
 //
 // Example:
 //
-//	valid, err := refreshService.VerifyRefreshToken(ctx, 123, tokenString)
+//	valid, err := refreshService.VerifyRefreshToken(ctx, "550e8400-e29b-41d4-a716-446655440000", tokenString)
 //	if err != nil {
 //	    return err
 //	}
@@ -164,8 +164,8 @@ func (rts *RefreshTokenService) CreateRefreshToken(ctx context.Context, userID i
 //	    return errors.New("invalid or expired refresh token")
 //	}
 //	// Token valid - generate new access token
-func (rts *RefreshTokenService) VerifyRefreshToken(ctx context.Context, userID int, token string) (bool, error) {
-	if userID <= 0 {
+func (rts *RefreshTokenService) VerifyRefreshToken(ctx context.Context, userID string, token string) (bool, error) {
+	if userID == "" {
 		return false, errors.New("invalid user id")
 	}
 
@@ -177,7 +177,7 @@ func (rts *RefreshTokenService) VerifyRefreshToken(ctx context.Context, userID i
 		ctx = context.Background()
 	}
 
-	val, err := rts.db.Get(ctx, fmt.Sprintf("%s:%d:%s", redisStoreNameRefreshToken, userID, token)).Result()
+	val, err := rts.db.Get(ctx, fmt.Sprintf("%s:%s:%s", redisStoreNameRefreshToken, userID, token)).Result()
 	if errors.Is(err, redis.Nil) {
 		return false, nil // Token doesn't exist or expired - not an error
 	}
@@ -197,7 +197,7 @@ func (rts *RefreshTokenService) VerifyRefreshToken(ctx context.Context, userID i
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
 //   - token: The refresh token to revoke (255 characters)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //
 // Returns:
 //   - error: Validation or storage errors
@@ -205,13 +205,13 @@ func (rts *RefreshTokenService) VerifyRefreshToken(ctx context.Context, userID i
 // Example:
 //
 //	// User clicks "Logout" button
-//	err := refreshService.RevokeRefreshToken(ctx, tokenFromCookie, 123)
+//	err := refreshService.RevokeRefreshToken(ctx, tokenFromCookie, "550e8400-e29b-41d4-a716-446655440000")
 //	if err != nil {
 //	    log.Printf("Failed to revoke token: %v", err)
 //	}
 //	// Clear client-side cookie
-func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token string, userID int) error {
-	if userID <= 0 {
+func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token string, userID string) error {
+	if userID == "" {
 		return errors.New("invalid user id")
 	}
 
@@ -223,7 +223,7 @@ func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token st
 		ctx = context.Background()
 	}
 
-	return rts.db.Del(ctx, fmt.Sprintf("%s:%d:%s", redisStoreNameRefreshToken, userID, token)).Err()
+	return rts.db.Del(ctx, fmt.Sprintf("%s:%s:%s", redisStoreNameRefreshToken, userID, token)).Err()
 }
 
 // RevokeAllUserRefreshTokens invalidates all refresh tokens for a specific user.
@@ -236,7 +236,7 @@ func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token st
 //
 // Parameters:
 //   - ctx: Context for the operation (uses Background if nil)
-//   - userID: User identifier (must be > 0)
+//   - userID: User identifier as string (UUID, numeric ID, or any unique identifier)
 //
 // Returns:
 //   - error: Storage errors encountered during revocation
@@ -244,12 +244,12 @@ func (rts *RefreshTokenService) RevokeRefreshToken(ctx context.Context, token st
 // Example:
 //
 //	// User changes password - force logout everywhere
-//	err := refreshService.RevokeAllUserRefreshTokens(ctx, 123)
+//	err := refreshService.RevokeAllUserRefreshTokens(ctx, "550e8400-e29b-41d4-a716-446655440000")
 //	if err != nil {
 //	    return fmt.Errorf("failed to revoke user sessions: %w", err)
 //	}
-func (rts *RefreshTokenService) RevokeAllUserRefreshTokens(ctx context.Context, userID int) error {
-	if userID <= 0 {
+func (rts *RefreshTokenService) RevokeAllUserRefreshTokens(ctx context.Context, userID string) error {
+	if userID == "" {
 		return errors.New("invalid user id")
 	}
 
@@ -257,7 +257,7 @@ func (rts *RefreshTokenService) RevokeAllUserRefreshTokens(ctx context.Context, 
 		ctx = context.Background()
 	}
 
-	keys := rts.db.Scan(ctx, 0, fmt.Sprintf("%s:%d:*", redisStoreNameRefreshToken, userID), 0).Iterator()
+	keys := rts.db.Scan(ctx, 0, fmt.Sprintf("%s:%s:*", redisStoreNameRefreshToken, userID), 0).Iterator()
 	for keys.Next(ctx) {
 		key := keys.Val()
 		if err := rts.db.Del(ctx, key).Err(); err != nil {
