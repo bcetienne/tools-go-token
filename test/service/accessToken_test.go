@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/bcetienne/tools-go-token/v4/lib"
-	modelRefreshToken "github.com/bcetienne/tools-go-token/v4/model/refresh-token"
+	modelAuth "github.com/bcetienne/tools-go-token/v4/model/auth"
 
 	"log"
 	"testing"
@@ -37,7 +37,7 @@ func Test_Auth_AccessToken_CreateAccessToken_TableDriven(t *testing.T) {
 		},
 	}
 
-	user := modelRefreshToken.AuthUser{
+	user := modelAuth.User{
 		ID:    "1",
 		Email: "user@mail.com",
 	}
@@ -81,7 +81,7 @@ func Test_Auth_AccessToken_VerifyAccessToken_TableDriven(t *testing.T) {
 		},
 	}
 
-	user := modelRefreshToken.AuthUser{
+	user := modelAuth.User{
 		ID:    "2",
 		Email: "miss@mail.com",
 	}
@@ -126,7 +126,7 @@ func Test_Auth_AccessToken_VerifyAccessToken_Expired(t *testing.T) {
 	// This should be a "Success" either with an "error" because, the claim should not be NIL.
 	// But it should be with a specific error when the token is expired.
 	t.Run("Success - Expired token", func(t *testing.T) {
-		user := modelRefreshToken.AuthUser{
+		user := modelAuth.User{
 			ID:    "3",
 			Email: "mister@mail.com",
 		}
@@ -160,11 +160,11 @@ func Test_Auth_AccessToken_VerifyAccessToken_Expired(t *testing.T) {
 
 func Test_Auth_AccessToken_VerifyAccessToken_TwoDifferentTokens(t *testing.T) {
 	t.Run("Success - Two different tokens", func(t *testing.T) {
-		user := modelRefreshToken.AuthUser{
+		user := modelAuth.User{
 			ID:    "550e8400-e29b-41d4-a716-446655440000",
 			Email: "mister@mail.com",
 		}
-		secondUser := modelRefreshToken.AuthUser{
+		secondUser := modelAuth.User{
 			ID:    "4",
 			Email: "lady@mail.com",
 		}
