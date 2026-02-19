@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bcetienne/tools-go-token/v4/lib"
-	modelRefreshToken "github.com/bcetienne/tools-go-token/v4/model/refresh-token"
+	modelAuth "github.com/bcetienne/tools-go-token/v4/model/auth"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -26,8 +26,8 @@ type AccessTokenService struct {
 
 // AccessTokenServiceInterface defines the methods for JWT access token management.
 type AccessTokenServiceInterface interface {
-	CreateAccessToken(user *modelRefreshToken.AuthUser) (string, error)
-	VerifyAccessToken(token string) (*modelRefreshToken.Claim, error)
+	CreateAccessToken(user *modelAuth.User) (string, error)
+	VerifyAccessToken(token string) (*modelAuth.Claim, error)
 }
 
 // NewAccessTokenService creates a new access token service instance.
@@ -71,19 +71,19 @@ func NewAccessTokenService(config *lib.Config) *AccessTokenService {
 //
 // Example:
 //
-//	user := modelRefreshToken.NewAuthUser("550e8400-e29b-41d4-a716-446655440000", "user@example.com")
+//	user := modelAuth.User("550e8400-e29b-41d4-a716-446655440000", "user@example.com")
 //	token, err := accessService.CreateAccessToken(user)
 //	if err != nil {
 //	    return err
 //	}
 //	// Send token to client: {"access_token": "eyJhbGciOi..."}
-func (at *AccessTokenService) CreateAccessToken(user *modelRefreshToken.AuthUser) (string, error) {
+func (at *AccessTokenService) CreateAccessToken(user *modelAuth.User) (string, error) {
 	duration, err := time.ParseDuration(at.config.JWTExpiry)
 	if err != nil {
 		return "", err
 	}
 
-	claim := modelRefreshToken.Claim{
+	claim := modelAuth.Claim{
 		KeyType: "access",
 		Email:   user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -117,7 +117,7 @@ func (at *AccessTokenService) CreateAccessToken(user *modelRefreshToken.AuthUser
 //   - token: JWT access token string to verify
 //
 // Returns:
-//   - *modelRefreshToken.Claim: Parsed token claims (nil if invalid)
+//   - *modelAuth.Claim: Parsed token claims (nil if invalid)
 //   - error: jwt.ErrTokenExpired if expired but structurally valid,
 //     other errors for invalid signature, malformed token, etc.
 //
@@ -133,20 +133,20 @@ func (at *AccessTokenService) CreateAccessToken(user *modelRefreshToken.AuthUser
 //	}
 //	// Token valid - proceed with authenticated request
 //	userID := claim.Subject
-func (at *AccessTokenService) VerifyAccessToken(token string) (*modelRefreshToken.Claim, error) {
-	t, err := jwt.ParseWithClaims(token, &modelRefreshToken.Claim{}, func(token *jwt.Token) (any, error) {
+func (at *AccessTokenService) VerifyAccessToken(token string) (*modelAuth.Claim, error) {
+	t, err := jwt.ParseWithClaims(token, &modelAuth.Claim{}, func(token *jwt.Token) (any, error) {
 		return []byte(at.config.JWTSecret), nil
 	}, jwt.WithLeeway(5*time.Second))
 
 	if err != nil {
 		// Specific case if the token is expired (to check if refresh is possible)
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return t.Claims.(*modelRefreshToken.Claim), jwt.ErrTokenExpired
+			return t.Claims.(*modelAuth.Claim), jwt.ErrTokenExpired
 		}
 		return nil, err
 	}
 
-	if claim, ok := t.Claims.(*modelRefreshToken.Claim); ok && t.Valid {
+	if claim, ok := t.Claims.(*modelAuth.Claim); ok && t.Valid {
 		return claim, nil
 	}
 

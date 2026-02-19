@@ -181,13 +181,13 @@ func validateUserPassword() {
 
 ```go
 import (
-    modelRefreshToken "github.com/bcetienne/tools-go-token/model/refresh-token"
+    modelAuth "github.com/bcetienne/tools-go-token/v4/model/auth"
     "github.com/bcetienne/tools-go-token/v4/lib"
 )
 
 func authenticationFlow() {
     // User data
-    user := modelRefreshToken.NewAuthUser("1", "user@example.com")  // or use UUID: "550e8400-..."
+    user := modelAuth.NewUser("1", "user@example.com")  // or use UUID: "550e8400-..."
 
     // Hash password
     passwordHash := lib.NewPasswordHash()
@@ -371,7 +371,7 @@ func refreshTokenExample() {
 
 ```go
 func accessTokenExample() {
-    user := modelRefreshToken.NewAuthUser("1", "user@example.com")
+    user := modelAuth.NewUser("1", "user@example.com")
 
     // Create access token
     token, err := accessTokenService.CreateAccessToken(user)
@@ -517,9 +517,10 @@ func otpManagementExample() {
 │   ├── token.go            # Token validation
 │   └── otp.go              # OTP validation
 ├── model/                  # Data models
-│   └── refresh-token/      # Refresh token specific models
-│       ├── authUser.go     # User authentication model
-│       └── claim.go        # JWT claims model
+│   ├── auth/               # Authentication models (v4.1+)
+│   │   ├── authUser.go     # User authentication model
+│   │   └── claim.go        # JWT claims model
+│   └── refresh-token/      # Deprecated aliases (removed in v5.0.0)
 ├── service/                # Business logic
 │   ├── accessToken.go      # JWT access token service (stateless)
 │   ├── refreshToken.go     # Refresh token service (Redis)

@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-02-19
+
+### Added
+
+- New `model/auth` package with `User`, `UserInterface`, and `Claim` types
+  - `auth.NewUser(id, email string)` replaces `refresh_token.NewAuthUser`
+  - `auth.User` replaces `refresh_token.AuthUser`
+  - `auth.UserInterface` replaces `refresh_token.AuthUserInterface`
+  - `auth.Claim` replaces `refresh_token.Claim`
+
+### Deprecated
+
+- `model/refresh-token` models moved to `model/auth` — will be removed in v5.0.0
+  - `refresh_token.AuthUser` → use `auth.User`
+  - `refresh_token.AuthUserInterface` → use `auth.UserInterface`
+  - `refresh_token.Claim` → use `auth.Claim`
+  - `refresh_token.NewAuthUser` → use `auth.NewUser`
+  - Aliases are in place: existing code continues to compile without changes
+
+### Internal
+
+- `service/accessToken.go` updated to use `model/auth` types directly
+
+---
+
 ## [4.0.0] - 2026-02-10
 
 ### Changed - BREAKING
